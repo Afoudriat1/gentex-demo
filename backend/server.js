@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const { PDFDocument } = require('pdf-lib');
 const cors = require('cors');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -110,8 +111,34 @@ app.post('/api/upload', upload.single('pdf'), async (req, res) => {
     }
 
     const pdfPath = req.file.path;
+    
+    // Get actual page count using pdf-lib
     const pdfBuffer = fs.readFileSync(pdfPath);
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const actualPageCount = pdfDoc.getPageCount();
+    
+    console.log('Actual PDF page count:', actualPageCount);
+    
+    // Parse PDF for text extraction
     const pdfData = await pdfParse(pdfBuffer);
+    
+    console.log('PDF text length:', pdfData.text.length);
+    
+    // Check page limit (set to 10 pages max)
+    const MAX_PAGES = 10;
+    if (actualPageCount > MAX_PAGES) {
+      // Clean up the uploaded file
+      fs.unlinkSync(pdfPath);
+      return res.status(400).json({ 
+        error: `PDF has ${actualPageCount} pages. Maximum allowed is ${MAX_PAGES} pages.` 
+      });
+    }
+    
+    console.log('PDF Data:', {
+      pageCount: actualPageCount,
+      textLength: pdfData.text ? pdfData.text.length : 0,
+      hasText: !!pdfData.text
+    });
     
     // Clean up the uploaded file
     fs.unlinkSync(pdfPath);
@@ -119,7 +146,7 @@ app.post('/api/upload', upload.single('pdf'), async (req, res) => {
     res.json({
       success: true,
       text: pdfData.text,
-      pages: pdfData.numpages,
+      pages: actualPageCount,
       filename: req.file.originalname
     });
   } catch (error) {
@@ -128,7 +155,7 @@ app.post('/api/upload', upload.single('pdf'), async (req, res) => {
   }
 });
 
-//Ask Question
+//Ask Question (Streaming)
 app.post('/api/ask', async (req, res) => {
   console.log('asking question...', req.body);
   try {
@@ -138,15 +165,69 @@ app.post('/api/ask', async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    const answer = await callOllama(question, pdfText ?? '');
-    console.log('Ollama answer:', answer);
-    res.json({
-      success: true,
-      answer: answer
+    // Set headers for streaming
+    res.writeHead(200, {
+      'Content-Type': 'text/plain',
+      'Transfer-Encoding': 'chunked',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
     });
+
+    const fullPrompt = pdfText
+      ? `Based on this PDF content: "${String(pdfText).slice(0, 6000)}"\n\nUser question: ${question}`
+      : String(question ?? '');
+
+    console.log('Full Prompt length:', fullPrompt.length);
+
+    const child = spawn('ollama', ['run', 'tinyllama'], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let settled = false;
+
+    const t = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill('SIGKILL'); } catch (_) {}
+      res.write('ERROR: Ollama timed out without producing output');
+      res.end();
+    }, 45000);
+
+    child.stdout.on('data', (chunk) => {
+      const text = chunk.toString();
+      if (!settled) {
+        res.write(text);
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      console.error('[ollama stderr]', text);
+    });
+
+    child.on('error', (e) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      console.error('Ollama spawn error:', e);
+      res.write('ERROR: Failed to start Ollama process');
+      res.end();
+    });
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      console.log('ollama closed with code:', code);
+      res.end();
+    });
+
+    // Write prompt via stdin and end so generation starts
+    child.stdin.write(fullPrompt);
+    child.stdin.end();
+
   } catch (error) {
     console.error('Ollama error:', error);
-    res.status(500).json({ error: 'Failed to get answer from AI' });
+    res.write('ERROR: Failed to get answer from AI');
+    res.end();
   }
 });
 
