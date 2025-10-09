@@ -8,6 +8,53 @@ function App() {
   const [answer, setAnswer] = useState('');
   const [history, setHistory] = useState([]); // newest first
   const [pdfText, setPdfText] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState(null);
+
+  // Initialize speech recognition
+  React.useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognitionInstance = new SpeechRecognition();
+      
+      recognitionInstance.continuous = false;
+      recognitionInstance.interimResults = false;
+      recognitionInstance.lang = 'en-US';
+
+      recognitionInstance.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognitionInstance.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setQuestion(transcript);
+        setIsListening(false);
+      };
+
+      recognitionInstance.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognitionInstance.onend = () => {
+        setIsListening(false);
+      };
+
+      setRecognition(recognitionInstance);
+    }
+  }, []);
+
+  const startListening = () => {
+    if (recognition && !isListening) {
+      recognition.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognition && isListening) {
+      recognition.stop();
+    }
+  };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -38,11 +85,11 @@ function App() {
           setPdfText(data.text);
           setUploadStatus(`Successfully uploaded: ${data.filename} (${data.pages} pages)`);
         } else {
-          setUploadStatus('Upload failed');
+          setUploadStatus(data.error || 'Upload failed');
         }
       } catch (error) {
         console.error('Upload error:', error);
-        setUploadStatus('Upload failed');
+        setUploadStatus(`Upload failed: ${error.message}`);
       }
     }
   };
@@ -50,11 +97,10 @@ function App() {
   const handleQuestionSubmit = async (e) => {
     e.preventDefault();
     if (question.trim()) {
-      setAnswer('Processing question...');
+      setAnswer('');
       console.log('question', question);
       
       try {
-        
         const response = await fetch('http://localhost:5001/api/ask', {
           method: 'POST',
           headers: {
@@ -66,18 +112,30 @@ function App() {
           }),
         });
         
-        const data = await response.json();
-        
-        if (data.success) {
-          setAnswer(data.answer);
-          setHistory((prev) => [
-            { id: Date.now(), question, answer: data.answer },
-            ...prev,
-          ]);
-          setQuestion('');
-        } else {
-          setAnswer('Sorry, I could not process your question.');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
         }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let streamingAnswer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          streamingAnswer += chunk;
+          setAnswer(streamingAnswer);
+        }
+
+        // Add to history when complete
+        setHistory((prev) => [
+          { id: Date.now(), question, answer: streamingAnswer },
+          ...prev,
+        ]);
+        setQuestion('');
+        
       } catch (error) {
         console.error('Question error:', error);
         setAnswer('Sorry, there was an error processing your question.');
@@ -88,44 +146,52 @@ function App() {
   return (
     <div className="App">
       <div className="home-container">
-        <h1 className="title">GENTEX DEMO APP</h1>
-        <div className="upload-section">
-          <div className="upload-area">
-            <input
-              type="file"
-              id="pdf-upload"
-              accept=".pdf"
-              onChange={handleFileChange}
-              className="file-input"
-            />
-            <label htmlFor="pdf-upload" className="upload-label">
-              <div className="upload-icon">📄</div>
-              <p>Click to select PDF or drag and drop</p>
-              <p className="file-types">PDF files only</p>
-            </label>
-          </div>
-          
-          {selectedFile && (
-            <div className="file-info">
-              <p className="file-name">{selectedFile.name}</p>
-              <p className="file-size">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-            </div>
-          )}
-          
-          <button 
-            onClick={handleUpload} 
-            disabled={!selectedFile}
-            className="upload-button"
-          >
-            Upload PDF
-          </button>
-          
-          {uploadStatus && (
-            <p className="upload-status">{uploadStatus}</p>
-          )}
+        <div className="logo-container">
+          <h1 className="logo">GENTEX<sup>®</sup></h1>
+          <h2 className="logo-subtitle">CORPORATION</h2>
         </div>
+        <h1 className="title">Communications Recall Demo</h1>
+        
+        <div className="main-content">
+          <div className="upload-section">
+            <h2 className="upload-title">Add Document</h2>
+            <div className="upload-area">
+              <input
+                type="file"
+                id="pdf-upload"
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="file-input"
+              />
+              <label htmlFor="pdf-upload" className="upload-label">
+                <div className="upload-icon">📄</div>
+                <p>Click to add PDF</p>
+              </label>
+            </div>
+            
+            {selectedFile && (
+              <div className="file-info">
+                <p className="file-name">{selectedFile.name}</p>
+                <p className="file-size">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            )}
+            
+            <button
+              onClick={handleUpload}
+              disabled={!selectedFile}
+              className="upload-button"
+            >
+              Upload PDF
+            </button>
+            
+            {uploadStatus && (
+              <p className={`upload-status ${uploadStatus.includes('pages') && uploadStatus.includes('Maximum allowed') ? 'error' : ''}`}>
+                {uploadStatus}
+              </p>
+            )}
+          </div>
 
-        <div className="question-section">
+          <div className="question-section">
           <h2 className="question-title">Ask a Question</h2>
           <form onSubmit={handleQuestionSubmit} className="question-form">
             <textarea
@@ -135,9 +201,20 @@ function App() {
               className="question-input"
               rows="3"
             />
-            <button type="submit" className="ask-button" disabled={!question.trim()}>
-              Ask Question
-            </button>
+            <div className="button-container">
+              <button
+                type="button"
+                onClick={isListening ? stopListening : startListening}
+                className={`mic-button ${isListening ? 'listening' : ''}`}
+                disabled={!recognition}
+                title={isListening ? 'Stop listening' : 'Start voice input'}
+              >
+                {isListening ? '🔴 Stop Listening' : '🎤 Voice Input'}
+              </button>
+              <button type="submit" className="ask-button" disabled={!question.trim()}>
+                Ask Question
+              </button>
+            </div>
           </form>
           
           {answer && (
@@ -162,6 +239,7 @@ function App() {
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

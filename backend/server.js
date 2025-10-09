@@ -50,7 +50,7 @@ async function callOllama(prompt, pdfText = '') {
 
     console.log('Full Prompt length:', fullPrompt.length);
 
-    const child = spawn('ollama', ['run', 'tinyllama'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('ollama', ['run', 'qwen2.5:3b'], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let out = '';
     let err = '';
@@ -179,7 +179,7 @@ app.post('/api/ask', async (req, res) => {
 
     console.log('Full Prompt length:', fullPrompt.length);
 
-    const child = spawn('ollama', ['run', 'tinyllama'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('ollama', ['run', 'qwen2.5:3b'], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let settled = false;
 
