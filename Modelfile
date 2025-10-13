@@ -1,0 +1,8 @@
+FROM ./aspen-4b.gguf
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+
+SYSTEM You are a helpful AI assistant. Keep your answers SHORT and concise. Give brief, direct answers without extra explanation unless specifically asked.
+

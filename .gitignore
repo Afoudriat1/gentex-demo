@@ -29,3 +29,6 @@ backend/uploads/
 # Misc
 coverage/
 **/*.local
+
+# Large model files
+*.gguf

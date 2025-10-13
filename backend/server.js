@@ -42,15 +42,42 @@ if (!fs.existsSync('uploads')) {
 
 // Function to call Ollama (stdin prompt, streaming logs, timeout)
 async function callOllama(prompt, pdfText = '') {
-  console.log('llama called on...', prompt, '|', (pdfText ? '[pdfText provided]' : '[no pdfText]'));
+  console.log('\n=== AI QUESTION RECEIVED ===');
+  console.log('Question:', prompt);
+  console.log('PDF Context:', pdfText ? 'YES' : 'NO');
   return new Promise((resolve, reject) => {
-    const fullPrompt = pdfText
-      ? `Based on this PDF content: "${String(pdfText).slice(0, 6000)}"\n\nUser question: ${prompt}`
-      : String(prompt ?? '');
+    // Clean and limit PDF text
+    let cleanPdfText = '';
+    if (pdfText) {
+      cleanPdfText = String(pdfText)
+        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim()
+        .slice(0, 8000); // Qwen2.5 can handle much more context
+    }
 
-    console.log('Full Prompt length:', fullPrompt.length);
+    // Qwen2.5 chat format
+    const chatPrompt = `<|im_start|>user
+${cleanPdfText ? `Based on this document: ${cleanPdfText}\n\nQuestion: ` : ''}${prompt}<|im_end|>
+<|im_start|>assistant
+`;
 
-    const child = spawn('ollama', ['run', 'qwen2.5:3b'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    console.log('Chat Prompt length:', chatPrompt.length);
+    if (cleanPdfText) {
+      console.log('PDF text preview:', cleanPdfText.slice(0, 200) + '...');
+    }
+
+    const child = spawn(path.join(__dirname, '../llama.cpp/build/bin/llama-cli'), [
+      '-m', path.join(__dirname, '../qwen2.5-3b.gguf'),
+      '-p', chatPrompt,
+      '-n', '512',
+      '--temp', '0.3',  // Slightly higher temp for Qwen (better quality)
+      '--top-p', '0.9',
+      '--repeat-penalty', '1.1',
+      '--no-display-prompt',
+      '-ngl', '0',  // Disable GPU offloading due to Metal bug
+      '--no-mmap'
+    ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let out = '';
     let err = '';
@@ -60,8 +87,8 @@ async function callOllama(prompt, pdfText = '') {
       if (settled) return;
       settled = true;
       try { child.kill('SIGKILL'); } catch (_) {}
-      reject(new Error('Ollama timed out without producing output'));
-    }, 45000);
+      reject(new Error('llama-cpp timed out without producing output'));
+    }, 180000); // 3 minutes for larger Qwen2.5 model
 
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
@@ -72,7 +99,7 @@ async function callOllama(prompt, pdfText = '') {
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
       err += text;
-      console.error('[ollama stderr]', text);
+      console.error('[llama-cpp stderr]', text);
     });
 
     child.on('error', (e) => {
@@ -88,15 +115,16 @@ async function callOllama(prompt, pdfText = '') {
       clearTimeout(t);
       console.log('ollama closed with code:', code);
       if (code === 0 && out.trim().length > 0) {
-        console.log('Final Ollama output (truncated):', out.trim().slice(0, 300));
+        console.log('\n=== AI RESPONSE ===');
+        console.log(out.trim());
+        console.log('=== END RESPONSE ===\n');
         resolve(out.trim());
       } else {
-        reject(new Error(`Ollama exited ${code}; stderr: ${err || '(empty)'}; stdout was empty`));
+        reject(new Error(`llama-cpp exited ${code}; stderr: ${err || '(empty)'}; stdout was empty`));
       }
     });
-
-    child.stdin.write(fullPrompt);
-    child.stdin.end();
+    
+    // llama-cli doesn't need stdin input since we pass the prompt as a parameter
   });
 }
 
@@ -105,8 +133,13 @@ async function callOllama(prompt, pdfText = '') {
 //Upload PDF
 app.post('/api/upload', upload.single('pdf'), async (req, res) => {
   try {
-    console.log('Uploading PDF...', req.file);
+    console.log('\n=== PDF UPLOAD REQUEST ===');
+    console.log('Request headers:', req.headers);
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Uploaded file:', req.file);
+    
     if (!req.file) {
+      console.log('❌ ERROR: No PDF file in request');
       return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
@@ -150,14 +183,34 @@ app.post('/api/upload', upload.single('pdf'), async (req, res) => {
       filename: req.file.originalname
     });
   } catch (error) {
-    console.error('PDF processing error:', error);
-    res.status(500).json({ error: 'Failed to process PDF' });
+    console.error('\n❌ PDF PROCESSING ERROR:');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Full error:', error);
+    res.status(500).json({ error: 'Failed to process PDF: ' + error.message });
   }
+});
+
+// Add error handling middleware for multer errors
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    console.error('\n❌ MULTER ERROR:');
+    console.error('Multer error type:', error.code);
+    console.error('Error message:', error.message);
+    return res.status(400).json({ error: `Upload error: ${error.message}` });
+  }
+  if (error.message === 'Only PDF files are allowed') {
+    console.error('\n❌ FILE TYPE ERROR: Not a PDF');
+    return res.status(400).json({ error: 'Only PDF files are allowed' });
+  }
+  next(error);
 });
 
 //Ask Question (Streaming)
 app.post('/api/ask', async (req, res) => {
-  console.log('asking question...', req.body);
+  console.log('\n=== STREAMING QUESTION RECEIVED ===');
+  console.log('Question:', req.body.question);
+  console.log('PDF Context:', req.body.pdfText ? 'YES' : 'NO');
   try {
     const { question, pdfText } = req.body;
 
@@ -173,13 +226,38 @@ app.post('/api/ask', async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type',
     });
 
-    const fullPrompt = pdfText
-      ? `Based on this PDF content: "${String(pdfText).slice(0, 6000)}"\n\nUser question: ${question}`
-      : String(question ?? '');
+    // Clean and limit PDF text
+    let cleanPdfText = '';
+    if (pdfText) {
+      cleanPdfText = String(pdfText)
+        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim()
+        .slice(0, 8000); // Qwen2.5 can handle much more context
+    }
 
-    console.log('Full Prompt length:', fullPrompt.length);
+    // Qwen2.5 chat format
+    const chatPrompt = `<|im_start|>user
+${cleanPdfText ? `Based on this document: ${cleanPdfText}\n\nQuestion: ` : ''}${question}<|im_end|>
+<|im_start|>assistant
+`;
 
-    const child = spawn('ollama', ['run', 'qwen2.5:3b'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    console.log('Chat Prompt length:', chatPrompt.length);
+    if (cleanPdfText) {
+      console.log('PDF text preview:', cleanPdfText.slice(0, 200) + '...');
+    }
+
+    const child = spawn(path.join(__dirname, '../llama.cpp/build/bin/llama-cli'), [
+      '-m', path.join(__dirname, '../qwen2.5-3b.gguf'),
+      '-p', chatPrompt,
+      '-n', '512',
+      '--temp', '0.3',  // Slightly higher temp for Qwen (better quality)
+      '--top-p', '0.9',
+      '--repeat-penalty', '1.1',
+      '--no-display-prompt',
+      '-ngl', '0',  // Disable GPU offloading due to Metal bug
+      '--no-mmap'
+    ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     let settled = false;
 
@@ -187,12 +265,15 @@ app.post('/api/ask', async (req, res) => {
       if (settled) return;
       settled = true;
       try { child.kill('SIGKILL'); } catch (_) {}
-      res.write('ERROR: Ollama timed out without producing output');
+      res.write('ERROR: llama-cpp timed out without producing output');
       res.end();
-    }, 45000);
+    }, 180000); // 3 minutes for larger Qwen2.5 model
 
+    let fullResponse = '';
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
+      fullResponse += text;
+      process.stdout.write(text); // Show in console as it streams
       if (!settled) {
         res.write(text);
       }
@@ -200,15 +281,15 @@ app.post('/api/ask', async (req, res) => {
 
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
-      console.error('[ollama stderr]', text);
+      console.error('[llama-cpp stderr]', text);
     });
 
     child.on('error', (e) => {
       if (settled) return;
       settled = true;
       clearTimeout(t);
-      console.error('Ollama spawn error:', e);
-      res.write('ERROR: Failed to start Ollama process');
+      console.error('llama-cpp spawn error:', e);
+      res.write('ERROR: Failed to start llama-cpp process');
       res.end();
     });
 
@@ -216,16 +297,17 @@ app.post('/api/ask', async (req, res) => {
       if (settled) return;
       settled = true;
       clearTimeout(t);
-      console.log('ollama closed with code:', code);
+      console.log('\n=== STREAMING AI RESPONSE COMPLETE ===');
+      console.log('Full Response:\n', fullResponse.trim());
+      console.log('=== END STREAMING RESPONSE ===\n');
+      console.log('llama-cli closed with code:', code);
       res.end();
     });
 
-    // Write prompt via stdin and end so generation starts
-    child.stdin.write(fullPrompt);
-    child.stdin.end();
+    // llama-cli doesn't need stdin input since we pass the prompt as a parameter
 
   } catch (error) {
-    console.error('Ollama error:', error);
+    console.error('llama-cpp error:', error);
     res.write('ERROR: Failed to get answer from AI');
     res.end();
   }

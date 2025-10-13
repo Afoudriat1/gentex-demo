@@ -5,11 +5,29 @@ function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [history, setHistory] = useState([]); // newest first
+  const [currentAnswer, setCurrentAnswer] = useState('');
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [history, setHistory] = useState(() => {
+    // Load history from localStorage on startup
+    try {
+      const saved = localStorage.getItem('chatHistory');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [pdfText, setPdfText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState(null);
+
+  // Save history to localStorage whenever it changes
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('chatHistory', JSON.stringify(history));
+    } catch (error) {
+      console.error('Failed to save chat history:', error);
+    }
+  }, [history]);
 
   // Initialize speech recognition
   React.useEffect(() => {
@@ -56,6 +74,10 @@ function App() {
     }
   };
 
+  const clearHistory = () => {
+    setHistory([]);
+  };
+
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file && file.type === 'application/pdf') {
@@ -97,8 +119,21 @@ function App() {
   const handleQuestionSubmit = async (e) => {
     e.preventDefault();
     if (question.trim()) {
-      setAnswer('');
-      console.log('question', question);
+      const currentQuestion = question;
+      setCurrentAnswer('');
+      setIsAnswering(true);
+      console.log('question', currentQuestion);
+      
+      // Add question to history immediately (with empty answer)
+      const newItem = { 
+        id: Date.now(), 
+        question: currentQuestion, 
+        answer: '',
+        timestamp: new Date().toLocaleString(),
+        isStreaming: true
+      };
+      setHistory((prev) => [newItem, ...prev]);
+      setQuestion(''); // Clear input for next question
       
       try {
         const response = await fetch('http://localhost:5001/api/ask', {
@@ -107,7 +142,7 @@ function App() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            question: question,
+            question: currentQuestion,
             pdfText: pdfText
           }),
         });
@@ -126,19 +161,32 @@ function App() {
           
           const chunk = decoder.decode(value);
           streamingAnswer += chunk;
-          setAnswer(streamingAnswer);
+          
+          // Update the answer in real-time in the history
+          setHistory((prev) => prev.map(item => 
+            item.id === newItem.id 
+              ? { ...item, answer: streamingAnswer }
+              : item
+          ));
         }
 
-        // Add to history when complete
-        setHistory((prev) => [
-          { id: Date.now(), question, answer: streamingAnswer },
-          ...prev,
-        ]);
-        setQuestion('');
+        // Mark as complete
+        setHistory((prev) => prev.map(item => 
+          item.id === newItem.id 
+            ? { ...item, isStreaming: false }
+            : item
+        ));
+        
+        setIsAnswering(false);
         
       } catch (error) {
         console.error('Question error:', error);
-        setAnswer('Sorry, there was an error processing your question.');
+        setHistory((prev) => prev.map(item => 
+          item.id === newItem.id 
+            ? { ...item, answer: 'Sorry, there was an error processing your question.', isStreaming: false }
+            : item
+        ));
+        setIsAnswering(false);
       }
     }
   };
@@ -217,23 +265,77 @@ function App() {
             </div>
           </form>
           
-          {answer && (
-            <div className="answer-container">
-              <h3 className="answer-title">Answer:</h3>
-              <p className="answer-text">{answer}</p>
-            </div>
-          )}
-
+          {/* Continuous Chat Conversation */}
           {history.length > 0 && (
             <div className="answer-container" style={{ marginTop: '2rem', width: '100%' }}>
-              <h3 className="answer-title">History</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 className="answer-title">Conversation ({history.length})</h3>
+                <button 
+                  onClick={clearHistory}
+                  style={{
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '0.5rem 1rem',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  Clear Chat
+                </button>
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '1rem', 
+                maxHeight: '600px', 
+                overflowY: 'auto',
+                border: '1px solid #333',
+                borderRadius: '8px',
+                padding: '1rem',
+                backgroundColor: '#0a0a0a'
+              }}>
                 {history.map((item) => (
-                  <div key={item.id} style={{ background: '#0b0b0b', border: '1px solid #222', borderRadius: 8, padding: '1rem' }}>
-                    <div style={{ color: '#aaa', marginBottom: 6 }}>Question</div>
-                    <div style={{ color: '#fff', marginBottom: 10 }}>{item.question}</div>
-                    <div style={{ color: '#aaa', marginBottom: 6 }}>Answer</div>
-                    <div style={{ color: '#ccc' }}>{item.answer}</div>
+                  <div key={item.id} style={{ marginBottom: '1.5rem' }}>
+                    {/* Timestamp */}
+                    <div style={{ color: '#666', fontSize: '0.8rem', marginBottom: 8 }}>
+                      {item.timestamp || 'No timestamp'}
+                    </div>
+                    
+                    {/* Question */}
+                    <div style={{ 
+                      background: '#1a1a1a', 
+                      border: '1px solid #333', 
+                      borderRadius: '8px', 
+                      padding: '0.75rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div style={{ color: '#4CAF50', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: 4 }}>
+                        You asked:
+                      </div>
+                      <div style={{ color: '#fff', lineHeight: '1.4' }}>{item.question}</div>
+                    </div>
+                    
+                    {/* Answer */}
+                    <div style={{ 
+                      background: '#0f1419', 
+                      border: '1px solid #2d3748', 
+                      borderRadius: '8px', 
+                      padding: '0.75rem'
+                    }}>
+                      <div style={{ color: '#2196F3', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: 4 }}>
+                        AI Response:
+                        {item.isStreaming ? (
+                          <span style={{ color: '#ff9800', marginLeft: '0.5rem' }}>● Typing...</span>
+                        ) : item.answer ? (
+                          <span style={{ color: '#4CAF50', marginLeft: '0.5rem' }}>✅ Complete</span>
+                        ) : null}
+                      </div>
+                      <div style={{ color: '#e0e0e0', lineHeight: '1.5' }}>
+                        {item.answer || (item.isStreaming ? '...' : 'No response')}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
