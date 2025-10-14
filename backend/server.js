@@ -10,6 +10,26 @@ const path = require('path');
 const app = express();
 const PORT = 5001;
 
+// Model configuration - Switch between Aspen 4B and Qwen2.5-3B
+const MODELS = {
+  aspen: {
+    name: 'Aspen 4B',
+    file: 'aspen-4b.gguf',
+    ngl: 0,  // CPU-only for ternary quantization
+    contextSize: 2048,
+    supportsGpu: false
+  },
+  qwen: {
+    name: 'Qwen2.5-3B',
+    file: 'qwen2.5-3b.gguf',
+    ngl: 35,  // GPU layers (can use Metal)
+    contextSize: 4096,
+    supportsGpu: true
+  }
+};
+
+let currentModel = 'aspen';  // Default to Aspen 4B
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -40,12 +60,13 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
-// Function to call Ollama (stdin prompt, streaming logs, timeout)
-async function callOllama(prompt, pdfText = '') {
+// Function to call Aspen 4B via llama-server (better ternary support)
+async function callLlamaCpp(prompt, pdfText = '') {
   console.log('\n=== AI QUESTION RECEIVED ===');
   console.log('Question:', prompt);
   console.log('PDF Context:', pdfText ? 'YES' : 'NO');
-  return new Promise((resolve, reject) => {
+  
+  try {
     // Clean and limit PDF text
     let cleanPdfText = '';
     if (pdfText) {
@@ -53,79 +74,90 @@ async function callOllama(prompt, pdfText = '') {
         .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
         .replace(/\s+/g, ' ') // Normalize whitespace
         .trim()
-        .slice(0, 8000); // Qwen2.5 can handle much more context
+        .slice(0, 4000); // Reduced context for faster CPU inference
     }
 
-    // Qwen2.5 chat format
-    const chatPrompt = `<|im_start|>user
-${cleanPdfText ? `Based on this document: ${cleanPdfText}\n\nQuestion: ` : ''}${prompt}<|im_end|>
-<|im_start|>assistant
-`;
+    // Simple prompt format for better compatibility with ternary model
+    let chatPrompt;
+    if (cleanPdfText) {
+      chatPrompt = `Document context: ${cleanPdfText}\n\nQuestion: ${prompt}\n\nAnswer concisely:`;
+    } else {
+      chatPrompt = `${prompt}\n\nAnswer:`;
+    }
 
     console.log('Chat Prompt length:', chatPrompt.length);
     if (cleanPdfText) {
       console.log('PDF text preview:', cleanPdfText.slice(0, 200) + '...');
     }
 
-    const child = spawn(path.join(__dirname, '../llama.cpp/build/bin/llama-cli'), [
-      '-m', path.join(__dirname, '../qwen2.5-3b.gguf'),
-      '-p', chatPrompt,
-      '-n', '512',
-      '--temp', '0.3',  // Slightly higher temp for Qwen (better quality)
-      '--top-p', '0.9',
-      '--repeat-penalty', '1.1',
-      '--no-display-prompt',
-      '-ngl', '0',  // Disable GPU offloading due to Metal bug
-      '--no-mmap'
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    // Use spawn to call curl (more reliable than http module)
+    const curlArgs = [
+      '-X', 'POST',
+      'http://localhost:8080/completion',
+      '-H', 'Content-Type: application/json',
+      '-d', JSON.stringify({
+        prompt: chatPrompt,
+        n_predict: 150,  // Enough for complete answers
+        temperature: 0.4,
+        top_p: 0.85,
+        repeat_penalty: 1.15,
+        stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
+      }),
+      '--max-time', '60'
+    ];
 
-    let out = '';
-    let err = '';
-    let settled = false;
+    return new Promise((resolve, reject) => {
+      const child = spawn('curl', curlArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+      
+      let out = '';
+      let err = '';
 
-    const t = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      try { child.kill('SIGKILL'); } catch (_) {}
-      reject(new Error('llama-cpp timed out without producing output'));
-    }, 180000); // 3 minutes for larger Qwen2.5 model
+      child.stdout.on('data', (chunk) => {
+        out += chunk.toString();
+      });
 
-    child.stdout.on('data', (chunk) => {
-      const text = chunk.toString();
-      out += text;
-      process.stdout.write(text);
+      child.stderr.on('data', (chunk) => {
+        err += chunk.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0 && out.trim()) {
+          try {
+            const response = JSON.parse(out);
+            const content = response.content || '';
+            
+            if (!content || content.trim().length === 0) {
+              console.error('⚠️  EMPTY RESPONSE from llama-server');
+              console.error('Raw response:', out.substring(0, 500));
+              reject(new Error('Aspen returned empty response'));
+              return;
+            }
+            
+            console.log('\n=== AI RESPONSE ===');
+            console.log(content.trim());
+            console.log('=== END RESPONSE ===\n');
+            resolve(content.trim());
+          } catch (e) {
+            console.error('Failed to parse JSON response:', e);
+            console.error('Raw response:', out.substring(0, 500));
+            reject(new Error('Failed to parse llama-server response'));
+          }
+        } else {
+          console.error('Curl failed with code:', code);
+          console.error('Curl stderr:', err);
+          reject(new Error('Failed to get response from llama-server'));
+        }
+      });
+
+      child.on('error', (e) => {
+        console.error('Spawn error:', e);
+        reject(new Error('Failed to start curl process'));
+      });
     });
-
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      err += text;
-      console.error('[llama-cpp stderr]', text);
-    });
-
-    child.on('error', (e) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(t);
-      reject(e);
-    });
-
-    child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(t);
-      console.log('ollama closed with code:', code);
-      if (code === 0 && out.trim().length > 0) {
-        console.log('\n=== AI RESPONSE ===');
-        console.log(out.trim());
-        console.log('=== END RESPONSE ===\n');
-        resolve(out.trim());
-      } else {
-        reject(new Error(`llama-cpp exited ${code}; stderr: ${err || '(empty)'}; stdout was empty`));
-      }
-    });
-    
-    // llama-cli doesn't need stdin input since we pass the prompt as a parameter
-  });
+  } catch (error) {
+    console.error('CallOllama error:', error);
+    throw error;
+  }
 }
 
 // ROUTES
@@ -206,11 +238,12 @@ app.use((error, req, res, next) => {
   next(error);
 });
 
-//Ask Question (Streaming)
+//Ask Question with real-time streaming from Aspen 4B
 app.post('/api/ask', async (req, res) => {
   console.log('\n=== STREAMING QUESTION RECEIVED ===');
   console.log('Question:', req.body.question);
   console.log('PDF Context:', req.body.pdfText ? 'YES' : 'NO');
+  
   try {
     const { question, pdfText } = req.body;
 
@@ -226,89 +259,90 @@ app.post('/api/ask', async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type',
     });
 
-    // Clean and limit PDF text
+    // Clean and format prompt
     let cleanPdfText = '';
     if (pdfText) {
       cleanPdfText = String(pdfText)
-        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
-        .replace(/\s+/g, ' ') // Normalize whitespace
+        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 8000); // Qwen2.5 can handle much more context
+        .slice(0, 4000);
     }
 
-    // Qwen2.5 chat format
-    const chatPrompt = `<|im_start|>user
-${cleanPdfText ? `Based on this document: ${cleanPdfText}\n\nQuestion: ` : ''}${question}<|im_end|>
-<|im_start|>assistant
-`;
+    const chatPrompt = cleanPdfText
+      ? `Document context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer concisely:`
+      : `${question}\n\nAnswer:`;
 
-    console.log('Chat Prompt length:', chatPrompt.length);
-    if (cleanPdfText) {
-      console.log('PDF text preview:', cleanPdfText.slice(0, 200) + '...');
-    }
+    // Use curl with llama-server streaming enabled
+    const curlArgs = [
+      '-X', 'POST',
+      'http://localhost:8080/completion',
+      '-H', 'Content-Type: application/json',
+      '-d', JSON.stringify({
+        prompt: chatPrompt,
+        n_predict: 150,  // Enough for complete answers
+        temperature: 0.4,
+        top_p: 0.85,
+        repeat_penalty: 1.15,
+        stream: true,  // Enable streaming from llama-server
+        stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
+      }),
+      '--no-buffer'  // Disable curl buffering for real-time streaming
+    ];
 
-    const child = spawn(path.join(__dirname, '../llama.cpp/build/bin/llama-cli'), [
-      '-m', path.join(__dirname, '../qwen2.5-3b.gguf'),
-      '-p', chatPrompt,
-      '-n', '512',
-      '--temp', '0.3',  // Slightly higher temp for Qwen (better quality)
-      '--top-p', '0.9',
-      '--repeat-penalty', '1.1',
-      '--no-display-prompt',
-      '-ngl', '0',  // Disable GPU offloading due to Metal bug
-      '--no-mmap'
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-    let settled = false;
-
-    const t = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      try { child.kill('SIGKILL'); } catch (_) {}
-      res.write('ERROR: llama-cpp timed out without producing output');
-      res.end();
-    }, 180000); // 3 minutes for larger Qwen2.5 model
-
+    const child = spawn('curl', curlArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+    
     let fullResponse = '';
+
+    // Stream output directly to client as it arrives
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
-      fullResponse += text;
-      process.stdout.write(text); // Show in console as it streams
-      if (!settled) {
-        res.write(text);
+      
+      // Parse SSE (Server-Sent Events) format from llama-server
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const jsonData = JSON.parse(line.substring(6));
+            if (jsonData.content) {
+              fullResponse += jsonData.content;
+              res.write(jsonData.content);  // Stream to frontend immediately
+            }
+          } catch (e) {
+            // Skip malformed JSON
+          }
+        }
       }
     });
 
     child.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      console.error('[llama-cpp stderr]', text);
-    });
-
-    child.on('error', (e) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(t);
-      console.error('llama-cpp spawn error:', e);
-      res.write('ERROR: Failed to start llama-cpp process');
-      res.end();
+      console.error('[curl stderr]', chunk.toString());
     });
 
     child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(t);
-      console.log('\n=== STREAMING AI RESPONSE COMPLETE ===');
-      console.log('Full Response:\n', fullResponse.trim());
-      console.log('=== END STREAMING RESPONSE ===\n');
-      console.log('llama-cli closed with code:', code);
+      console.log('\n=== STREAMING COMPLETE ===');
+      console.log('Full Response:', fullResponse);
+      console.log('Response length:', fullResponse.length);
+      console.log('=== END ===\n');
+      
+      // If no content was streamed, send error message
+      if (!fullResponse || fullResponse.trim().length === 0) {
+        console.error('⚠️  No content was streamed from llama-server');
+        res.write('ERROR: Aspen did not generate a response. Please try rephrasing your question.');
+      }
+      
       res.end();
     });
 
-    // llama-cli doesn't need stdin input since we pass the prompt as a parameter
+    child.on('error', (e) => {
+      console.error('Streaming error:', e);
+      res.write('ERROR: Failed to stream from Aspen 4B');
+      res.end();
+    });
 
   } catch (error) {
-    console.error('llama-cpp error:', error);
-    res.write('ERROR: Failed to get answer from AI');
+    console.error('Error in streaming endpoint:', error);
+    res.write('ERROR: Failed to get answer from Aspen 4B');
     res.end();
   }
 });
@@ -317,6 +351,40 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Backend is running' });
 });
 
+// Get current model info
+app.get('/api/model', (req, res) => {
+  const modelInfo = MODELS[currentModel];
+  res.json({ 
+    current: currentModel,
+    name: modelInfo.name,
+    file: modelInfo.file,
+    available: Object.keys(MODELS)
+  });
+});
+
+// Switch model (requires manual llama-server restart)
+app.post('/api/model/switch', (req, res) => {
+  const { model } = req.body;
+  
+  if (!MODELS[model]) {
+    return res.status(400).json({ 
+      error: 'Invalid model', 
+      available: Object.keys(MODELS) 
+    });
+  }
+  
+  const oldModel = currentModel;
+  currentModel = model;
+  const modelInfo = MODELS[currentModel];
+  
+  res.json({ 
+    success: true,
+    message: `Switched from ${MODELS[oldModel].name} to ${modelInfo.name}`,
+    instructions: `Please restart llama-server with: ./llama.cpp/build/bin/llama-server --model ${modelInfo.file} --host 127.0.0.1 --port 8080 -ngl ${modelInfo.ngl} --ctx-size ${modelInfo.contextSize} --threads 6 --cache-ram 0 --parallel 1`
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
+  console.log(`Active AI Model: ${MODELS[currentModel].name}`);
 });

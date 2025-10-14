@@ -7,27 +7,15 @@ function App() {
   const [question, setQuestion] = useState('');
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [isAnswering, setIsAnswering] = useState(false);
-  const [history, setHistory] = useState(() => {
-    // Load history from localStorage on startup
-    try {
-      const saved = localStorage.getItem('chatHistory');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [pdfText, setPdfText] = useState('');
+  const [history, setHistory] = useState([]);  // Start fresh on every page load
+  const [pdfText, setPdfText] = useState('');  // Fresh PDF context on every load
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState(null);
 
-  // Save history to localStorage whenever it changes
+  // Clear localStorage on component mount to ensure fresh start
   React.useEffect(() => {
-    try {
-      localStorage.setItem('chatHistory', JSON.stringify(history));
-    } catch (error) {
-      console.error('Failed to save chat history:', error);
-    }
-  }, [history]);
+    localStorage.removeItem('chatHistory');
+  }, []);
 
   // Initialize speech recognition
   React.useEffect(() => {
