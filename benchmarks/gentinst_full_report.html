@@ -1,0 +1,63 @@
+<html><head><meta charset='utf-8'><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;padding:24px;color:#111}h1{margin-top:0}h2{margin-top:24px}ul{margin:8px 0 16px 24px}code{background:#f5f5f7;padding:2px 4px;border-radius:4px}</style></head><body><h1>GentInst – Full Benchmark Report</h1>
+<p></p>
+<p>**Generated:** 2025-11-02 17:21:38   </p>
+<p>**Latest run (UTC):** 2025-11-03T00:00:37Z</p>
+<p></p>
+<h2>Latency and Throughput</h2>
+<ul>
+<li>Text generation throughput (tg256): 6 tokens/sec</li>
+<li>Prompt processing throughput (pp1024): see llama-bench output</li>
+</ul>
+<h2>Memory Footprint and Model Size</h2>
+<ul>
+<li>Model file: `/Users/andrewfoudriat/MODEL DEMO/gentinst/gentinst.gguf`</li>
+<li>Model size (disk): 940.4 MB</li>
+<li>Runtime memory breakdown (ctx=4096, CPU-only, estimated):</li>
+<p>  - Model buffer (CPU): 940.00 MiB</p>
+<p>  - KV cache (CPU, f16 K/V): 224.00 MiB</p>
+<p>  - Compute buffers (CPU): 300.00 MiB</p>
+<p>  - Output buffer (CPU): 0.58 MiB</p>
+<p>  - Token/special caches: 0.93 MiB</p>
+<p>  - Estimated total RAM: ~1.43 GB</p>
+</ul>
+<p>Notes: KV cache grows roughly linearly with context size; halving ctx to 2048 reduces KV to ~112 MiB. Values are estimates for Q4_K_M quantized GentInst (1.5B params).</p>
+<p></p>
+<h2>Power Efficiency (CPU)</h2>
+<ul>
+<li>Idle average: 0.246 W  </li>
+<li>Active average: 16.366 W  </li>
+<li>Net average: 16.12 W  </li>
+<li>Energy per token: 2.686666666666667 J/token</li>
+</ul>
+<h2>Battery Runtime Estimates</h2>
+<p>Using net average power and J/token from the latest run. Override batteries via env `BATTERY_WH` (comma-separated).</p>
+<p></p>
+<p>| Battery | Energy (Wh) | Est. runtime (h) | Tokens on full charge |</p>
+<p>|---|---:|---:|---:|</p>
+<p>| 2x AAA Lithium | 3.6 | 0.22 | 4,823 |</p>
+<p>| 5000mAh Samsung | 18.5 | 1.15 | 24,789 |</p>
+<p>| 19.0Wh battery | 19.0 | 1.18 | 25,459 |</p>
+<p>| 60.0Wh battery | 60.0 | 3.72 | 80,397 |</p>
+<p>| 80.0Wh battery | 80.0 | 4.96 | 107,196 |</p>
+<p></p>
+<p>Note: Power units auto-detected (mW→W). Averages are over idle/active sampling windows.</p>
+<p></p>
+<h2>Test Configuration</h2>
+<ul>
+<li>Threads: 6  </li>
+<li>Context size: 4096  </li>
+<li>Prompt tokens: 1024  </li>
+<li>Generation tokens: 256  </li>
+<li>Offload: CPU-only (-ngl 0)</li>
+</ul>
+<h2>Files</h2>
+<ul>
+<li>Aggregated CSV: `/Users/andrewfoudriat/GENTEX DEMO/benchmarks/gentinst_metrics.csv`  </li>
+<li>Aggregated JSONL: `/Users/andrewfoudriat/GENTEX DEMO/benchmarks/gentinst_metrics.jsonl`  </li>
+<li>Human report (this): `/Users/andrewfoudriat/GENTEX DEMO/benchmarks/gentinst_full_report.md` / `/Users/andrewfoudriat/GENTEX DEMO/benchmarks/gentinst_full_report.html`</li>
+</ul>
+<h2>Recent Runs (latest first)</h2>
+<p>| timestamp (UTC) | threads | pp | tg | t/s | J/token | net_W (W) |</p>
+<p>|---|---:|---:|---:|---:|---:|---:|</p>
+<p>| 2025-11-03T00:00:37Z | 6 | 1024 | 256 | 6 | 2.686666666666667 | 16.12 |</p>
+<p>| 2025-11-02T23:47:42Z | 6 | 1024 | 256 | 6 | 2.6454999999999997 | 15.873 |</p></body></html>

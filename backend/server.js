@@ -25,10 +25,17 @@ const MODELS = {
     ngl: 35,  // GPU layers (can use Metal)
     contextSize: 4096,
     supportsGpu: true
+  },
+  gentinst: {
+    name: 'GentInst',
+    file: '/Users/andrewfoudriat/MODEL DEMO/gentinst/gentinst.gguf',
+    ngl: 0,  // CPU-only (Metal has issues with this model)
+    contextSize: 4096,
+    supportsGpu: false
   }
 };
 
-let currentModel = 'aspen';  // Default to Aspen 4B
+let currentModel = 'aspen';  // Currently running Aspen 4B
 
 // Middleware
 app.use(cors());
@@ -269,9 +276,11 @@ app.post('/api/ask', async (req, res) => {
         .slice(0, 4000);
     }
 
+    const systemPrompt = "You are a helpful assistant. Keep your answers SHORT and CONCISE. Aim for 1-3 sentences maximum. Be direct and to the point.";
+    
     const chatPrompt = cleanPdfText
-      ? `Document context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer concisely:`
-      : `${question}\n\nAnswer:`;
+      ? `${systemPrompt}\n\nDocument context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer:`
+      : `${systemPrompt}\n\nQuestion: ${question}\n\nAnswer:`;
 
     // Use curl with llama-server streaming enabled
     const curlArgs = [
@@ -280,7 +289,7 @@ app.post('/api/ask', async (req, res) => {
       '-H', 'Content-Type: application/json',
       '-d', JSON.stringify({
         prompt: chatPrompt,
-        n_predict: 150,  // Enough for complete answers
+        n_predict: 80,   // Limit for concise answers
         temperature: 0.4,
         top_p: 0.85,
         repeat_penalty: 1.15,

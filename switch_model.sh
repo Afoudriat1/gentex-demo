@@ -4,11 +4,12 @@
 MODEL=$1
 
 if [ -z "$MODEL" ]; then
-  echo "Usage: ./switch_model.sh [aspen|qwen]"
+  echo "Usage: ./switch_model.sh [aspen|qwen|gentinst]"
   echo ""
   echo "Available models:"
   echo "  aspen - Aspen 4B (1GB, CPU-only, ternary quantization)"
-  echo "  qwen  - Qwen2.5-3B (2GB, GPU-accelerated)"
+  echo "  qwen     - Qwen2.5-3B (2GB, GPU-accelerated)"
+  echo "  gentinst - GentInst (GGUF converted, GPU-accelerated)"
   exit 1
 fi
 
@@ -61,6 +62,28 @@ case $MODEL in
       2>/dev/null
     
     echo "✅ Qwen2.5-3B is starting on port 8080..."
+    ;;
+
+  gentinst)
+    echo "🧩 Starting GentInst (CPU-only)..."
+    cd "/Users/andrewfoudriat/GENTEX DEMO"
+    ./llama.cpp/build/bin/llama-server \
+      --model "/Users/andrewfoudriat/MODEL DEMO/gentinst/gentinst.gguf" \
+      --host 127.0.0.1 \
+      --port 8080 \
+      -ngl 0 \
+      --ctx-size 4096 \
+      --threads 6 \
+      --cache-ram 0 \
+      --parallel 1 &
+
+    # Update backend
+    curl -X POST http://localhost:5001/api/model/switch \
+      -H "Content-Type: application/json" \
+      -d '{"model": "gentinst"}' \
+      2>/dev/null
+
+    echo "✅ GentInst is starting on port 8080..."
     ;;
     
   *)

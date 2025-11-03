@@ -1,0 +1,2 @@
+{"timestamp": "2025-10-31T18:13:19Z", "idle_W": 0.374, "active_W": 13.688, "net_W": 13.314, "tokens_per_sec": 6.0, "j_per_token": 2.219, "idle_secs": 20, "active_secs": 45, "threads": 6, "prompt_tokens": 1024, "gen_tokens": 256}
+{"timestamp": "2025-10-31T18:40:39Z", "idle_W": 0.389, "active_W": 13.632, "net_W": 13.243, "tokens_per_sec": 6.0, "j_per_token": 2.2071666666666667, "idle_secs": 20, "active_secs": 45, "threads": 6, "prompt_tokens": 1024, "gen_tokens": 256}
