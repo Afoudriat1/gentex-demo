@@ -28,14 +28,14 @@ const MODELS = {
   },
   gentinst: {
     name: 'GentInst',
-    file: '/Users/andrewfoudriat/MODEL DEMO/gentinst/gentinst.gguf',
+    file: '/opt/models/gentinst.gguf',  // VM path (local: /Users/andrewfoudriat/MODEL DEMO/gentinst/gentinst.gguf)
     ngl: 0,  // CPU-only (Metal has issues with this model)
     contextSize: 4096,
     supportsGpu: false
   }
 };
 
-let currentModel = 'aspen';  // Currently running Aspen 4B
+let currentModel = 'qwen';  // Currently running Qwen2.5-3B
 
 // Middleware
 app.use(cors());
@@ -276,11 +276,11 @@ app.post('/api/ask', async (req, res) => {
         .slice(0, 4000);
     }
 
-    const systemPrompt = "You are a helpful assistant. Keep your answers SHORT and CONCISE. Aim for 1-3 sentences maximum. Be direct and to the point.";
+    const systemPrompt = "You are a helpful assistant. Keep your answers SHORT and CONCISE (1-3 sentences maximum). Only answer based on information found in the provided document. If the answer cannot be found in the document, respond with 'The answer cannot be found in the provided document.' Be direct and factual.";
     
     const chatPrompt = cleanPdfText
-      ? `${systemPrompt}\n\nDocument context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer:`
-      : `${systemPrompt}\n\nQuestion: ${question}\n\nAnswer:`;
+      ? `${systemPrompt}\n\nDocument context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer (only from document, or say it cannot be found):`
+      : `${systemPrompt}\n\nQuestion: ${question}\n\nAnswer (only from document, or say it cannot be found):`;
 
     // Use curl with llama-server streaming enabled
     const curlArgs = [
@@ -393,7 +393,8 @@ app.post('/api/model/switch', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend server running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   console.log(`Active AI Model: ${MODELS[currentModel].name}`);
+  console.log(`Accessible at http://34.56.119.174:${PORT}`);
 });

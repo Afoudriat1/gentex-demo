@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './App.css';
+import API_BASE_URL from './config';
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -84,7 +85,7 @@ function App() {
       formData.append('pdf', selectedFile);
       console.log('selectedFile', selectedFile);
       try {
-        const response = await fetch('http://localhost:5001/api/upload', {
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
           method: 'POST',
           body: formData,
         });
@@ -124,7 +125,7 @@ function App() {
       setQuestion(''); // Clear input for next question
       
       try {
-        const response = await fetch('http://localhost:5001/api/ask', {
+        const response = await fetch(`${API_BASE_URL}/api/ask`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
