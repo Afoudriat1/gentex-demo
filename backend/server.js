@@ -21,10 +21,10 @@ const MODELS = {
   },
   qwen: {
     name: 'Qwen2.5-3B',
-    file: 'qwen2.5-3b.gguf',
-    ngl: 35,  // GPU layers (can use Metal)
+    file: '/opt/models/qwen2.5-3b.gguf',  // VM path (local: /Users/andrewfoudriat/GENTEX DEMO/qwen2.5-3b.gguf)
+    ngl: 0,  // CPU-only on VM
     contextSize: 4096,
-    supportsGpu: true
+    supportsGpu: false
   },
   gentinst: {
     name: 'GentInst',
