@@ -32,6 +32,13 @@ const MODELS = {
     ngl: 0,  // CPU-only (Metal has issues with this model)
     contextSize: 4096,
     supportsGpu: false
+  },
+  pleias: {
+    name: 'Pleias RAG 1B',
+    file: '/Users/andrewfoudriat/MODEL DEMO/Pleias-RAG-1B.gguf',  // Local path; update if deploying elsewhere
+    ngl: 0,  // CPU-only locally (adjust if you have GPU offload)
+    contextSize: 4096,
+    supportsGpu: false
   }
 };
 
