@@ -1,0 +1,4 @@
+{"timestamp": "2025-11-16T02:10:54Z", "idle_W": 0.157, "active_W": 8.517, "net_W": 8.36, "tokens_per_sec": 8.0, "j_per_token": 1.045, "idle_secs": 20, "active_secs": 45, "threads": 8, "prompt_tokens": 1024, "gen_tokens": 256}
+{"timestamp": "2025-11-16T02:38:24Z", "idle_W": 0.031, "active_W": 8.799, "net_W": 8.767999999999999, "tokens_per_sec": 8.0, "j_per_token": 1.0959999999999999, "idle_secs": 20, "active_secs": 45, "threads": 8, "prompt_tokens": 1024, "gen_tokens": 256}
+{"timestamp": "2025-11-16T02:43:46Z", "idle_W": 0.023, "active_W": 9.064, "net_W": 9.041, "tokens_per_sec": 8.0, "j_per_token": 1.130125, "idle_secs": 20, "active_secs": 45, "threads": 8, "prompt_tokens": 1024, "gen_tokens": 256}
+{"timestamp": "2025-11-16T02:47:10Z", "idle_W": 0.029, "active_W": 8.944, "net_W": 8.915000000000001, "tokens_per_sec": 25.77, "j_per_token": 0.3459448971672488, "idle_secs": 20, "active_secs": 45, "threads": 8, "prompt_tokens": 1024, "gen_tokens": 256}
