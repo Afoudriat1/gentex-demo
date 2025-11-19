@@ -14,8 +14,8 @@ const PORT = 5001;
 // Option 1: Set via environment variable: LLAMA_SERVER_URL=http://ip:8080 node server.js
 // Option 2: Set directly in code below (uncomment and set your Lambda Labs IP):
 // const LLAMA_SERVER_URL_OVERRIDE = 'http://YOUR_LAMBDA_LABS_IP:8080';
-const LLAMA_SERVER_URL_OVERRIDE = 'https://kentucky-lake-vids-arranged.trycloudflare.com'; // Set to your Lambda Labs URL, or null to use env/default
-const LLAMA_SERVER_URL = LLAMA_SERVER_URL_OVERRIDE || process.env.LLAMA_SERVER_URL || 'http://localhost:8080';
+
+const LLAMA_SERVER_URL = 'https://kentucky-lake-vids-arranged.trycloudflare.com';
 
 // Model configuration - Switch between Aspen 4B and Qwen2.5-3B
 const MODELS = {
