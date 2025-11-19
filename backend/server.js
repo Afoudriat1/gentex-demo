@@ -15,7 +15,7 @@ const PORT = 5001;
 // Option 2: Set directly in code below (uncomment and set your Lambda Labs IP):
 // const LLAMA_SERVER_URL_OVERRIDE = 'http://YOUR_LAMBDA_LABS_IP:8080';
 
-const LLAMA_SERVER_URL = 'https://kentucky-lake-vids-arranged.trycloudflare.com';
+const LLAMA_SERVER_URL = ' https://dcf5b1f61974.ngrok-free.app';
 
 // Model configuration - Switch between Aspen 4B and Qwen2.5-3B
 const MODELS = {
