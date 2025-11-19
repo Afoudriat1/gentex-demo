@@ -10,6 +10,13 @@ const path = require('path');
 const app = express();
 const PORT = 5001;
 
+// llama-server configuration - can be localhost or Lambda Labs VM
+// Option 1: Set via environment variable: LLAMA_SERVER_URL=http://ip:8080 node server.js
+// Option 2: Set directly in code below (uncomment and set your Lambda Labs IP):
+// const LLAMA_SERVER_URL_OVERRIDE = 'http://YOUR_LAMBDA_LABS_IP:8080';
+const LLAMA_SERVER_URL_OVERRIDE = 'https://kentucky-lake-vids-arranged.trycloudflare.com'; // Set to your Lambda Labs URL, or null to use env/default
+const LLAMA_SERVER_URL = LLAMA_SERVER_URL_OVERRIDE || process.env.LLAMA_SERVER_URL || 'http://localhost:8080';
+
 // Model configuration - Switch between Aspen 4B and Qwen2.5-3B
 const MODELS = {
   aspen: {
@@ -20,11 +27,11 @@ const MODELS = {
     supportsGpu: false
   },
   qwen: {
-    name: 'Qwen2.5-3B',
-    file: '/opt/models/qwen2.5-3b.gguf',  // VM path (local: /Users/andrewfoudriat/GENTEX DEMO/qwen2.5-3b.gguf)
-    ngl: 0,  // CPU-only on VM
+    name: 'Qwen2.5-3B-Instruct',
+    file: '/Users/andrewfoudriat/GENTEX DEMO/models/qwen2.5-3b-instruct-q4_k_m.gguf',  // Local path
+    ngl: 20,  // Metal offload for local Mac
     contextSize: 4096,
-    supportsGpu: false
+    supportsGpu: true
   },
   gentinst: {
     name: 'GentInst',
@@ -107,7 +114,7 @@ async function callLlamaCpp(prompt, pdfText = '') {
     // Use spawn to call curl (more reliable than http module)
     const curlArgs = [
       '-X', 'POST',
-      'http://localhost:8080/completion',
+      `${LLAMA_SERVER_URL}/completion`,
       '-H', 'Content-Type: application/json',
       '-d', JSON.stringify({
         prompt: chatPrompt,
@@ -292,7 +299,7 @@ app.post('/api/ask', async (req, res) => {
     // Use curl with llama-server streaming enabled
     const curlArgs = [
       '-X', 'POST',
-      'http://localhost:8080/completion',
+      `${LLAMA_SERVER_URL}/completion`,
       '-H', 'Content-Type: application/json',
       '-d', JSON.stringify({
         prompt: chatPrompt,
@@ -396,12 +403,13 @@ app.post('/api/model/switch', (req, res) => {
   res.json({ 
     success: true,
     message: `Switched from ${MODELS[oldModel].name} to ${modelInfo.name}`,
-    instructions: `Please restart llama-server with: ./llama.cpp/build/bin/llama-server --model ${modelInfo.file} --host 127.0.0.1 --port 8080 -ngl ${modelInfo.ngl} --ctx-size ${modelInfo.contextSize} --threads 6 --cache-ram 0 --parallel 1`
+    instructions: `Please restart llama-server with: ./llama.cpp/build/bin/llama-server --model ${modelInfo.file} --host 127.0.0.1 --port 8080 -ngl ${modelInfo.ngl} --ctx-size ${modelInfo.contextSize} --threads 6 --cache-ram 0 --parallel 8`
   });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   console.log(`Active AI Model: ${MODELS[currentModel].name}`);
+  console.log(`llama-server URL: ${LLAMA_SERVER_URL}`);
   console.log(`Accessible at http://34.56.119.174:${PORT}`);
 });
