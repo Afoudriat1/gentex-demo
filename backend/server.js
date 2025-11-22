@@ -15,7 +15,7 @@ const PORT = 5001;
 // Option 2: Set directly in code below (uncomment and set your Lambda Labs IP):
 // const LLAMA_SERVER_URL_OVERRIDE = 'http://YOUR_LAMBDA_LABS_IP:8080';
 
-const LLAMA_SERVER_URL = 'https://d8abf64c8059.ngrok-free.app';
+const LLAMA_SERVER_URL = 'https://5c50eba8f16e.ngrok-free.app';
 
 // Model configuration - Switch between Aspen 4B and Qwen2.5-3B
 const MODELS = {
@@ -121,8 +121,8 @@ async function callLlamaCpp(prompt, pdfText = '') {
       '-d', JSON.stringify({
         prompt: chatPrompt,
         n_predict: 150,  // Enough for complete answers
-        temperature: 0.4,
-        top_p: 0.85,
+        temperature: 0.6,
+        top_p: 0.9,
         repeat_penalty: 1.15,
         stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
       }),
@@ -308,8 +308,8 @@ app.post('/api/ask', async (req, res) => {
       '-d', JSON.stringify({
         prompt: chatPrompt,
         n_predict: 80,   // Limit for concise answers
-        temperature: 0.4,
-        top_p: 0.85,
+        temperature: 0.6,
+        top_p: 0.9,
         repeat_penalty: 1.15,
         stream: true,  // Enable streaming from llama-server
         stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
