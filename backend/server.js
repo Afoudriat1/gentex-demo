@@ -90,14 +90,8 @@ async function callLlamaCpp(prompt, pdfText = '') {
   console.log('PDF Context:', pdfText ? 'YES' : 'NO');
   
   try {
-    // Clean PDF text (no truncation - send full document)
-    let cleanPdfText = '';
-    if (pdfText) {
-      cleanPdfText = String(pdfText)
-        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim();
-    }
+    // Send PDF text as-is (no processing/cleaning)
+    let cleanPdfText = pdfText || '';
 
     // System prompt for document-based Q&A
     const systemPrompt = `You are an AI assistant whose ONLY job is to answer questions using the content of a provided document.
@@ -321,14 +315,8 @@ app.post('/api/ask', async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type',
     });
 
-    // Clean and format prompt (no truncation - send full document)
-    let cleanPdfText = '';
-    if (pdfText) {
-      cleanPdfText = String(pdfText)
-        .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
+    // Send PDF text as-is (no processing/cleaning)
+    let cleanPdfText = pdfText || '';
 
     const systemPrompt = `You are an AI assistant whose ONLY job is to answer questions using the content of a provided document.
 
