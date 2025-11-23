@@ -1,0 +1,25 @@
+[Unit]
+Description=Gentex Demo Backend Server
+After=network.target
+
+[Service]
+Type=simple
+User=andrewfoudriat
+WorkingDirectory=/home/andrewfoudriat/GENTEX-DEMO/backend
+Environment="NODE_ENV=production"
+Environment="LLAMA_SERVER_URL=https://2d4ef1599a02.ngrok-free.app"
+Environment="PORT=5001"
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gentex-backend
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

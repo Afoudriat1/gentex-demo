@@ -11,11 +11,13 @@ const app = express();
 const PORT = 5001;
 
 // llama-server configuration - can be localhost or Lambda Labs VM
-// Option 1: Set via environment variable: LLAMA_SERVER_URL=http://ip:8080 node server.js
-// Option 2: Set directly in code below (uncomment and set your Lambda Labs IP):
-// const LLAMA_SERVER_URL_OVERRIDE = 'http://YOUR_LAMBDA_LABS_IP:8080';
-
-const LLAMA_SERVER_URL = 'https://2d4ef1599a02.ngrok-free.app';
+// For VM deployment: Set LLAMA_SERVER_URL environment variable to your ngrok URL
+// Example: LLAMA_SERVER_URL=https://your-ngrok-url.ngrok-free.app node server.js
+// Option 1: Set via environment variable: LLAMA_SERVER_URL=https://your-ngrok-url.ngrok-free.app node server.js
+// Option 2: Set directly in code below (uncomment and set your Lambda Labs ngrok URL):
+// const LLAMA_SERVER_URL_OVERRIDE = 'https://your-ngrok-url.ngrok-free.app';
+const LLAMA_SERVER_URL_OVERRIDE = null; // Set to your Lambda Labs ngrok URL, or null to use env/default
+const LLAMA_SERVER_URL = LLAMA_SERVER_URL_OVERRIDE || process.env.LLAMA_SERVER_URL || 'http://localhost:8080';
 
 // Model configuration - Switch between Aspen 4B and Qwen2.5-3B
 const MODELS = {
@@ -97,12 +99,50 @@ async function callLlamaCpp(prompt, pdfText = '') {
         .trim();
     }
 
-    // Simple prompt format for better compatibility with ternary model
+    // System prompt for document-based Q&A
+    const systemPrompt = `You are an AI assistant whose ONLY job is to answer questions using the content of a provided document.
+
+Follow these rules strictly:
+
+1. Use only the information found inside <begin_document> and <end_document>.
+
+2. Do NOT use any outside knowledge, even if the answer seems obvious.
+
+3. Do NOT make assumptions, guesses, or inferences beyond what is explicitly stated in the document.
+
+4. If the document does not contain enough information to answer the question, respond with:
+
+   "The document does not provide enough information to answer this question."
+
+5. Output only the final answer — no explanation, no reasoning, and no references to these rules.`;
+
     let chatPrompt;
     if (cleanPdfText) {
-      chatPrompt = `Document context: ${cleanPdfText}\n\nQuestion: ${prompt}\n\nAnswer concisely:`;
+      chatPrompt = `${systemPrompt}
+
+<begin_document>
+
+${cleanPdfText}
+
+<end_document>
+
+Question:
+
+${prompt}
+
+Your task:
+
+Provide an answer based solely on the document and nothing else.`;
     } else {
-      chatPrompt = `${prompt}\n\nAnswer:`;
+      chatPrompt = `${systemPrompt}
+
+Question:
+
+${prompt}
+
+Your task:
+
+Provide an answer based solely on the document and nothing else.`;
     }
 
     console.log('Chat Prompt length:', chatPrompt.length);
@@ -290,11 +330,47 @@ app.post('/api/ask', async (req, res) => {
         .trim();
     }
 
-    const systemPrompt = "You are a helpful assistant. Keep your answers SHORT and CONCISE (1-3 sentences maximum). Only answer based on information found in the provided document. If the answer cannot be found in the document, respond with 'The answer cannot be found in the provided document.' Be direct and factual.";
+    const systemPrompt = `You are an AI assistant whose ONLY job is to answer questions using the content of a provided document.
+
+Follow these rules strictly:
+
+1. Use only the information found inside <begin_document> and <end_document>.
+
+2. Do NOT use any outside knowledge, even if the answer seems obvious.
+
+3. Do NOT make assumptions, guesses, or inferences beyond what is explicitly stated in the document.
+
+4. If the document does not contain enough information to answer the question, respond with:
+
+   "The document does not provide enough information to answer this question."
+
+5. Output only the final answer — no explanation, no reasoning, and no references to these rules.`;
     
     const chatPrompt = cleanPdfText
-      ? `${systemPrompt}\n\nDocument context: ${cleanPdfText}\n\nQuestion: ${question}\n\nAnswer (only from document, or say it cannot be found):`
-      : `${systemPrompt}\n\nQuestion: ${question}\n\nAnswer (only from document, or say it cannot be found):`;
+      ? `${systemPrompt}
+
+<begin_document>
+
+${cleanPdfText}
+
+<end_document>
+
+Question:
+
+${question}
+
+Your task:
+
+Provide an answer based solely on the document and nothing else.`
+      : `${systemPrompt}
+
+Question:
+
+${question}
+
+Your task:
+
+Provide an answer based solely on the document and nothing else.`;
 
     // Use curl with llama-server streaming enabled
     const curlArgs = [

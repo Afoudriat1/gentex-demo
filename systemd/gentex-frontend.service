@@ -1,0 +1,26 @@
+[Unit]
+Description=Gentex Demo Frontend React App
+After=network.target gentex-backend.service
+Requires=gentex-backend.service
+
+[Service]
+Type=simple
+User=andrewfoudriat
+WorkingDirectory=/home/andrewfoudriat/GENTEX-DEMO/my-react-app
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+Environment="REACT_APP_API_URL=http://localhost:5001"
+ExecStart=/usr/bin/env npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gentex-frontend
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
