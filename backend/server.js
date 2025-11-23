@@ -30,7 +30,7 @@ const MODELS = {
     name: 'Qwen2.5-3B-Instruct',
     file: '/Users/andrewfoudriat/GENTEX DEMO/models/qwen2.5-3b-instruct-q4_k_m.gguf',  // Local path
     ngl: 20,  // Metal offload for local Mac
-    contextSize: 4096,
+    contextSize: 16384,
     supportsGpu: true
   },
   gentinst: {
@@ -88,14 +88,13 @@ async function callLlamaCpp(prompt, pdfText = '') {
   console.log('PDF Context:', pdfText ? 'YES' : 'NO');
   
   try {
-    // Clean and limit PDF text
+    // Clean PDF text (no truncation - send full document)
     let cleanPdfText = '';
     if (pdfText) {
       cleanPdfText = String(pdfText)
         .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ') // Remove special chars
         .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim()
-        .slice(0, 4000); // Reduced context for faster CPU inference
+        .trim();
     }
 
     // Simple prompt format for better compatibility with ternary model
@@ -282,14 +281,13 @@ app.post('/api/ask', async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type',
     });
 
-    // Clean and format prompt
+    // Clean and format prompt (no truncation - send full document)
     let cleanPdfText = '';
     if (pdfText) {
       cleanPdfText = String(pdfText)
         .replace(/[^\w\s\.\,\!\?\-\(\)]/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 4000);
+        .trim();
     }
 
     const systemPrompt = "You are a helpful assistant. Keep your answers SHORT and CONCISE (1-3 sentences maximum). Only answer based on information found in the provided document. If the answer cannot be found in the document, respond with 'The answer cannot be found in the provided document.' Be direct and factual.";
