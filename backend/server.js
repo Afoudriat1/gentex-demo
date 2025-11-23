@@ -120,11 +120,11 @@ async function callLlamaCpp(prompt, pdfText = '') {
       '-H', 'User-Agent: curl/7.68.0',
       '-d', JSON.stringify({
         prompt: chatPrompt,
-        n_predict: 150,  // Enough for complete answers
-        temperature: 0.6,
-        top_p: 0.9,
+        n_predict: 256,  // max_new_tokens
+        temperature: 0.1,
+        top_p: 0.95,
         repeat_penalty: 1.15,
-        stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
+        stop: ['<|im_end|>']  // Stop at end token
       }),
       '--max-time', '60'
     ];
@@ -307,12 +307,12 @@ app.post('/api/ask', async (req, res) => {
       '-H', 'User-Agent: curl/7.68.0',
       '-d', JSON.stringify({
         prompt: chatPrompt,
-        n_predict: 80,   // Limit for concise answers
-        temperature: 0.6,
-        top_p: 0.9,
+        n_predict: 256,  // max_new_tokens
+        temperature: 0.1,
+        top_p: 0.95,
         repeat_penalty: 1.15,
         stream: true,  // Enable streaming from llama-server
-        stop: ['\n\nQuestion:', '\n\nDocument:']  // Only stop at clear boundaries
+        stop: ['<|im_end|>']  // Stop at end token
       }),
       '--no-buffer'  // Disable curl buffering for real-time streaming
     ];
