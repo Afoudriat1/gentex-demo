@@ -293,9 +293,17 @@
 }
 
 @keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 .ask-button {
@@ -344,20 +352,120 @@
   margin: 0;
 }
 
+.conversation-container {
+  margin-top: 2rem;
+  width: 100%;
+}
+
+.conversation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.clear-button {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.3s ease;
+}
+
+.clear-button:hover {
+  background: #c82333;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+  background-color: #0a0a0a;
+}
+
+.conversation-item {
+  margin-bottom: 1.5rem;
+}
+
+.conversation-timestamp {
+  color: #666;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+
+.conversation-question {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.conversation-answer {
+  background: #0f1419;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.conversation-label {
+  font-size: 0.9rem;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.question-label {
+  color: #4CAF50;
+}
+
+.answer-label {
+  color: #2196F3;
+}
+
+.conversation-content {
+  line-height: 1.4;
+  color: #fff;
+}
+
+.conversation-answer .conversation-content {
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.status-indicator {
+  margin-left: 0.5rem;
+}
+
+.status-indicator.typing {
+  color: #ff9800;
+}
+
+.status-indicator.complete {
+  color: #4CAF50;
+}
+
 @media (max-width: 768px) {
   .title {
     font-size: 2rem;
     margin-bottom: 2rem;
   }
-  
+
   .upload-area {
     padding: 2rem 1rem;
   }
-  
+
   .upload-icon {
     font-size: 3rem;
   }
-  
+
   .question-title {
     font-size: 1.5rem;
   }

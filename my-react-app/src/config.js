@@ -1,12 +1,9 @@
-// Configuration for API endpoints
-// Change this to switch between local and VM deployment
+const DEPLOYMENT = process.env.REACT_APP_DEPLOYMENT || 'vm';
 
-// Set to 'local' for local development, 'vm' for VM deployment
-const DEPLOYMENT = 'vm'; // Change to 'vm' when deploying to VM
-
-const API_BASE_URL = DEPLOYMENT === 'vm' 
-  ? 'http://34.56.119.174:5001'
+const API_BASE_URL = DEPLOYMENT === 'vm'
+  ? (process.env.REACT_APP_API_URL || 'http://34.56.119.174:5001')
   : 'http://localhost:5001';
 
-export default API_BASE_URL;
+console.log('API_BASE_URL:', API_BASE_URL);
 
+export default API_BASE_URL;
