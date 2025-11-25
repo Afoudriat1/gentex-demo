@@ -65,7 +65,7 @@ function App() {
     setHistory([]);
   };
 
-  const handleFileChange = (event) => {
+  const handleFileChange = async (event) => {
     console.log('handleFileChange called!');
     console.log('Event:', event);
     console.log('Files:', event.target.files);
@@ -83,31 +83,35 @@ function App() {
       console.log('PDF file selected, setting selectedFile state');
       setSelectedFile(file);
       setUploadStatus(`Selected: ${file.name}`);
-      // Don't clear pdfText here - keep it until new upload succeeds
+      // Automatically trigger upload when PDF is selected
+      // We'll call handleUpload after setting the state
+      setTimeout(async () => {
+        await handleUploadForFile(file);
+      }, 0);
     } else {
       console.log('Invalid file type or no file selected');
       setUploadStatus('Please select a PDF file');
     }
   };
 
-  const handleUpload = async () => {
-    console.log('handleUpload called!');
-    console.log('selectedFile:', selectedFile);
+  const handleUploadForFile = async (fileToUpload) => {
+    console.log('handleUploadForFile called!');
+    console.log('fileToUpload:', fileToUpload);
 
-    if (!selectedFile) {
-      console.error('No file selected');
+    if (!fileToUpload) {
+      console.error('No file provided');
       setUploadStatus('Please select a file first');
       return;
     }
 
     console.log('=== STARTING UPLOAD ===');
-    console.log('File:', selectedFile.name, 'Size:', selectedFile.size);
+    console.log('File:', fileToUpload.name, 'Size:', fileToUpload.size);
     console.log('API_BASE_URL:', API_BASE_URL);
     console.log('Upload URL:', `${API_BASE_URL}/api/upload`);
 
     setUploadStatus('Uploading...');
     const formData = new FormData();
-    formData.append('pdf', selectedFile);
+    formData.append('pdf', fileToUpload);
 
     try {
       console.log('Sending upload request...');
@@ -278,20 +282,6 @@ function App() {
                 <p className="file-size">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
               </div>
             )}
-
-            <button
-              onClick={(e) => {
-                console.log('Upload button clicked!');
-                console.log('selectedFile:', selectedFile);
-                console.log('Button disabled?', !selectedFile);
-                e.preventDefault();
-                handleUpload();
-              }}
-              disabled={!selectedFile}
-              className="upload-button"
-            >
-              Upload PDF
-            </button>
 
             {uploadStatus && (
               <p className={`upload-status ${uploadStatus.includes('Maximum allowed') ? 'error' : ''}`}>

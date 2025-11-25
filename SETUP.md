@@ -1,204 +1,145 @@
-# GENTEX Communications Recall Demo - Setup Guide
+# Setup Guide
 
-AI-powered document analysis tool with PDF upload and natural language Q&A capabilities.
+## Prerequisites
 
-## 🚀 Quick Start
-
-### Prerequisites
-- macOS (M1/M2/M3) or Linux
 - Node.js 16+ and npm
-- Python 3.8+
-- 4-8GB free RAM
-- Git with submodules support
+- Access to an external llama-server (configured via environment variable)
 
-### Installation
+## Installation Steps
 
-1. **Clone the repository with submodules:**
-```bash
-git clone --recursive https://github.com/YOUR_USERNAME/gentex-demo.git
-cd gentex-demo
-```
+### 1. Install Backend Dependencies
 
-2. **Build llama.cpp:**
-```bash
-cd llama.cpp
-mkdir build
-cd build
-cmake ..
-make -j
-cd ../..
-```
-
-3. **Download AI Models:**
-
-Choose one or both models:
-
-**Option A: Aspen 4B (Recommended for CPU)**
-```bash
-# Install HuggingFace CLI
-pip3 install huggingface-hub
-
-# Download Aspen 4B
-huggingface-cli download TerneForge/aspen_4b_draft --include "*.gguf" --local-dir ./
-```
-
-**Option B: Qwen2.5-3B (Faster with GPU)**
-```bash
-# Download from HuggingFace (or use your own GGUF model)
-huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF --include "*q4_k_m.gguf" --local-dir ./
-# Rename to qwen2.5-3b.gguf
-```
-
-4. **Install Backend Dependencies:**
 ```bash
 cd backend
 npm install
-cd ..
 ```
 
-5. **Install Frontend Dependencies:**
+### 2. Install Frontend Dependencies
+
 ```bash
-cd my-react-app
+cd frontend
 npm install
-cd ..
 ```
 
-## 🎯 Running the Application
+## Configuration
 
-### Start All Services:
+### Backend Configuration
 
-**Terminal 1 - Start AI Model Server:**
+Edit `backend/server.js` or set environment variables:
+
 ```bash
-# For Aspen 4B (CPU-only)
-./switch_model.sh aspen
-
-# OR for Qwen2.5-3B (GPU-accelerated)
-./switch_model.sh qwen
+export PORT=5001
+export LLAMA_SERVER_URL=https://your-llama-server-url.com
 ```
 
-**Terminal 2 - Start Backend:**
+### Frontend Configuration
+
+Edit `frontend/src/config.js` or set environment variables:
+
+```bash
+export REACT_APP_DEPLOYMENT=local  # or 'vm' for VM deployment
+export REACT_APP_API_URL=http://localhost:5001  # Backend URL
+```
+
+## Running the Application
+
+### Development Mode
+
+**Terminal 1 - Start Backend:**
 ```bash
 cd backend
 node server.js
 ```
 
-**Terminal 3 - Start Frontend:**
+**Terminal 2 - Start Frontend:**
 ```bash
-cd my-react-app
+cd frontend
 npm start
 ```
 
-**Open your browser:**
-http://localhost:3000
+The frontend will automatically open at `http://localhost:3000`
 
-## 🔧 Configuration
+### Production Mode
 
-### Model Switching
-
-Switch between models anytime:
+**Backend:**
 ```bash
-./switch_model.sh aspen  # Switch to Aspen 4B
-./switch_model.sh qwen   # Switch to Qwen2.5-3B
+cd backend
+NODE_ENV=production node server.js
 ```
 
-Check current model:
+**Frontend:**
 ```bash
-curl http://localhost:5001/api/model
+cd frontend
+npm run build
+# Serve the build folder with a static server
 ```
 
-### Available Models
+## Troubleshooting
 
-| Model | Size | Speed | Hardware | Best For |
-|-------|------|-------|----------|----------|
-| **Aspen 4B** | 1.0 GB | ~13 tok/s | CPU | Compact, efficient |
-| **Qwen2.5-3B** | 2.0 GB | ~20-25 tok/s | GPU (Metal) | Speed, detailed answers |
+### Backend won't start
 
-## 📋 Architecture
+- Check if port 5001 is available: `lsof -i :5001`
+- Verify Node.js version: `node --version` (needs 16+)
+- Check environment variables are set correctly
 
-```
-Browser (localhost:3000)
-    ↓
-React Frontend
-    ↓
-Backend API (localhost:5001)
-    ↓
-llama-server (localhost:8080)
-    ↓
-AI Model (Aspen/Qwen)
-```
+### Frontend can't connect to backend
 
-## 🎨 Features
+- Verify backend is running: `curl http://localhost:5001/api/health`
+- Check `config.js` has the correct API URL
+- Check browser console for CORS errors
 
-- 📄 PDF upload and text extraction (up to 10 pages)
-- 🤖 AI-powered Q&A with document context
-- 🎤 Voice input (speech-to-text)
-- 💬 Real-time streaming responses
-- 🔄 Switch between AI models
-- 🧹 Fresh conversations on page reload
+### PDF upload fails
 
-## 🛠️ Troubleshooting
+- Check file size limits (default: 50MB)
+- Verify `backend/uploads/` directory exists and is writable
+- Check backend logs for errors
 
-**Model not responding?**
-- Check llama-server is running: `curl http://localhost:8080/health`
-- Restart with: `./switch_model.sh aspen` (or `qwen`)
+### AI responses not working
 
-**Backend errors?**
-- Check Node.js version: `node --version` (needs 16+)
-- Reinstall dependencies: `cd backend && npm install`
+- Verify `LLAMA_SERVER_URL` is correct and accessible
+- Test llama-server directly: `curl $LLAMA_SERVER_URL/health`
+- Check backend logs for curl command errors
 
-**Frontend issues?**
-- Clear browser cache and reload
-- Check console for errors (F12)
-- Restart: `cd my-react-app && npm start`
-
-**Out of memory?**
-- Use Aspen 4B instead of Qwen (smaller)
-- Reduce context size in `backend/server.js`
-
-## 📦 Project Structure
+## File Structure
 
 ```
-gentex-demo/
+GENTEX-DEMO/
 ├── backend/
-│   ├── server.js          # Express API server
-│   └── package.json       # Backend dependencies
-├── my-react-app/
+│   ├── server.js          # Main backend server
+│   ├── package.json       # Backend dependencies
+│   ├── uploads/           # PDF upload directory
+│   └── server.log         # Server logs (if logging to file)
+├── frontend/
 │   ├── src/
-│   │   └── App.js         # React frontend
-│   └── package.json       # Frontend dependencies
-├── llama.cpp/             # AI inference engine (submodule)
-├── switch_model.sh        # Model switching utility
-├── chat_aspen.py          # Terminal chat interface
-├── .gitignore             # Excludes models and builds
-└── SETUP.md               # This file
+│   │   ├── App.js         # Main React component
+│   │   ├── config.js      # API configuration
+│   │   ├── App.css        # Styles
+│   │   └── index.js       # React entry point
+│   ├── package.json       # Frontend dependencies
+│   └── public/            # Static assets
+└── README.md              # Project documentation
 ```
 
-## 🔐 Notes
+## Environment Variables Reference
 
-- AI models (.gguf files) are **NOT** included in the repository (too large)
-- Users must download models separately (see Installation step 3)
-- First-time setup takes 10-20 minutes (building llama.cpp + downloading models)
-- Subsequent runs start in seconds
+### Backend
 
-## 💡 Tips
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `5001` | Backend server port |
+| `LLAMA_SERVER_URL` | ngrok URL | External llama-server endpoint |
 
-- **CPU-only?** Use Aspen 4B
-- **Have GPU?** Use Qwen2.5-3B for 2x speed
-- **Low on RAM?** Reduce PDF context limit in `server.js`
-- **Want faster responses?** Use shorter `n_predict` values
+### Frontend
 
-## 📄 License
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REACT_APP_DEPLOYMENT` | `'vm'` | Deployment mode: 'vm' or 'local' |
+| `REACT_APP_API_URL` | Auto | Backend API URL (auto-set based on deployment) |
 
-Check individual component licenses:
-- llama.cpp: MIT License
-- Models: Check HuggingFace model cards
-- Your code: (Your license here)
+## Next Steps
 
-## 🤝 Contributing
-
-Issues and pull requests welcome!
-
----
-
-**Built with:** React, Node.js, Express, llama.cpp, Aspen 4B, Qwen2.5-3B
+1. Start both services (backend and frontend)
+2. Open `http://localhost:3000` in your browser
+3. Upload a PDF document
+4. Ask questions about the document content
 
