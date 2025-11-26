@@ -1,7 +1,3 @@
-// =============================
-//  CLEAN WORKING BACKEND
-//  With proper llama.cpp prompt formatting
-// =============================
 const express = require("express");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
