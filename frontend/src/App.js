@@ -12,6 +12,11 @@ function App() {
     const saved = localStorage.getItem('pdfText');
     return saved || '';
   });
+  const [sessionId, setSessionId] = useState(() => {
+    // Load sessionId from localStorage on mount
+    const saved = localStorage.getItem('sessionId');
+    return saved || null;
+  });
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState(null);
 
@@ -65,11 +70,60 @@ function App() {
     setHistory([]);
   };
 
+  // Parse answer text to extract thinking sections and main content
+  const parseAnswer = (text) => {
+    if (!text) return { mainContent: '', thinkingSections: [] };
+
+    const thinkingSections = [];
+    let mainContent = text;
+
+    // Match various thinking tag formats
+    // Handles: <think>...</think>, <think>...</think>, <think>...</think>, etc.
+    const thinkingPatterns = [
+      /<think>(.*?)<\/think>/gis,
+      /<think>(.*?)<\/redacted_reasoning>/gis,
+      /<think>(.*?)<\/redacted_reasoning>/gis,
+      /<reasoning>(.*?)<\/reasoning>/gis,
+      /<thinking>(.*?)<\/thinking>/gis,
+    ];
+
+    thinkingPatterns.forEach((pattern, index) => {
+      const matches = [...text.matchAll(pattern)];
+      matches.forEach((match, matchIndex) => {
+        const fullMatch = match[0];
+        const content = match[1];
+        const id = `thinking-${index}-${matchIndex}`;
+
+        thinkingSections.push({
+          id,
+          content: content.trim(),
+          fullMatch,
+        });
+
+        // Remove the thinking section from main content
+        mainContent = mainContent.replace(fullMatch, `[THINKING_${id}]`);
+      });
+    });
+
+    // Clean up any remaining placeholders
+    thinkingSections.forEach((section) => {
+      mainContent = mainContent.replace(`[THINKING_${section.id}]`, '');
+    });
+
+    return {
+      mainContent: mainContent.trim(),
+      thinkingSections,
+    };
+  };
+
+
   const clearDocument = () => {
     setPdfText('');
+    setSessionId(null);
     setSelectedFile(null);
     setUploadStatus('');
     localStorage.removeItem('pdfText');
+    localStorage.removeItem('sessionId');
     console.log('Document cleared from state and localStorage');
   };
 
@@ -159,7 +213,17 @@ function App() {
           const textToStore = String(data.text); // Ensure it's a string
           console.log('Storing PDF text, length:', textToStore.length);
           setPdfText(textToStore);
-          setUploadStatus(`Successfully uploaded: ${data.filename} (${data.pages} pages, ${textLength} chars)`);
+
+          // Store sessionId if available (for RAG)
+          if (data.sessionId) {
+            setSessionId(data.sessionId);
+            localStorage.setItem('sessionId', data.sessionId);
+            console.log('Session ID stored:', data.sessionId, `(${data.chunksCount} chunks with embeddings)`);
+            setUploadStatus(`Successfully uploaded: ${data.filename} (${data.pages} pages, ${textLength} chars, ${data.chunksCount} chunks for RAG)`);
+          } else {
+            setUploadStatus(`Successfully uploaded: ${data.filename} (${data.pages} pages, ${textLength} chars)`);
+          }
+
           console.log('PDF text stored in state and localStorage');
         }
       } else {
@@ -223,10 +287,20 @@ function App() {
       }
       console.log('=== END SENDING QUESTION ===');
 
+      // Get sessionId from state or localStorage
+      let sessionIdToSend = sessionId || localStorage.getItem('sessionId') || null;
+
       const requestBody = {
         question: currentQuestion,
-        pdfText: pdfTextToSend
+        pdfText: pdfTextToSend, // Keep as fallback
+        sessionId: sessionIdToSend // Send sessionId for RAG
       };
+
+      if (sessionIdToSend) {
+        console.log('Using RAG with sessionId:', sessionIdToSend);
+      } else {
+        console.log('No sessionId available, using full PDF text');
+      }
 
       console.log('\n=== REQUEST TO BACKEND ===');
       console.log('URL:', `${API_BASE_URL}/api/ask`);
@@ -251,22 +325,101 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Network response was not ok: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
       }
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8', { fatal: false });
       let streamingAnswer = '';
+      let hasReceivedData = false;
+      let lastDataTime = Date.now();
+      const STREAM_TIMEOUT = 300000; // 5 minutes max timeout
+      const DATA_TIMEOUT = 60000; // 1 minute without data = connection issue
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Set up timeout to detect if streaming stops
+      const streamTimeout = setTimeout(() => {
+        console.error('Stream timeout - no data received for too long');
+        reader.cancel().catch(() => { });
+        updateHistoryItem(newItem.id, {
+          answer: streamingAnswer + '\n\n⚠️ Stream stopped unexpectedly. The response may be incomplete.',
+          isStreaming: false
+        });
+      }, STREAM_TIMEOUT);
 
-        streamingAnswer += decoder.decode(value);
-        updateHistoryItem(newItem.id, { answer: streamingAnswer });
+      // Set up data timeout to detect if connection is dead
+      let dataTimeout;
+      const resetDataTimeout = () => {
+        clearTimeout(dataTimeout);
+        dataTimeout = setTimeout(() => {
+          if (Date.now() - lastDataTime > DATA_TIMEOUT) {
+            console.error('Data timeout - connection appears dead');
+            reader.cancel().catch(() => { });
+            updateHistoryItem(newItem.id, {
+              answer: streamingAnswer + '\n\n⚠️ Connection lost. The response may be incomplete.',
+              isStreaming: false
+            });
+          }
+        }, DATA_TIMEOUT);
+      };
+      resetDataTimeout();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            clearTimeout(streamTimeout);
+            clearTimeout(dataTimeout);
+            // Flush any remaining buffered data
+            const remaining = decoder.decode();
+            if (remaining) {
+              streamingAnswer += remaining;
+              updateHistoryItem(newItem.id, { answer: streamingAnswer });
+            }
+            break;
+          }
+
+          if (value && value.length > 0) {
+            hasReceivedData = true;
+            lastDataTime = Date.now();
+            resetDataTimeout(); // Reset timeout on data received
+
+            const decoded = decoder.decode(value, { stream: true });
+            streamingAnswer += decoded;
+            updateHistoryItem(newItem.id, { answer: streamingAnswer });
+          }
+        }
+
+        if (!hasReceivedData && streamingAnswer.length === 0) {
+          throw new Error('No data received from server');
+        }
+
+        updateHistoryItem(newItem.id, { isStreaming: false });
+      } catch (streamError) {
+        clearTimeout(streamTimeout);
+        clearTimeout(dataTimeout);
+        console.error('Streaming error:', streamError);
+
+        // Check if we have partial data
+        if (streamingAnswer.length > 0) {
+          updateHistoryItem(newItem.id, {
+            answer: streamingAnswer + '\n\n⚠️ Stream interrupted: ' + streamError.message,
+            isStreaming: false
+          });
+        } else {
+          try {
+            await reader.cancel();
+          } catch (cancelError) {
+            // Ignore cancel errors
+          }
+          throw streamError;
+        }
       }
-
-      updateHistoryItem(newItem.id, { isStreaming: false });
 
     } catch (error) {
       console.error('Question error:', error);
@@ -387,11 +540,44 @@ function App() {
                           {item.isStreaming ? (
                             <span className="status-indicator typing">● Typing...</span>
                           ) : item.answer ? (
-                            <span className="status-indicator complete">✅ Complete</span>
+                            item.answer.includes('⚠️') || item.answer.includes('incomplete') ? (
+                              <span className="status-indicator warning">⚠️ Incomplete</span>
+                            ) : (
+                              <span className="status-indicator complete">✅ Complete</span>
+                            )
                           ) : null}
                         </div>
                         <div className="conversation-content">
-                          {item.answer || (item.isStreaming ? '...' : 'No response')}
+                          {(() => {
+                            const { mainContent, thinkingSections } = parseAnswer(item.answer || '');
+                            return (
+                              <>
+                                <div className="main-answer-content">
+                                  {mainContent || (item.isStreaming ? '...' : 'No response')}
+                                </div>
+                                {thinkingSections.length > 0 && (
+                                  <details className="thinking-dropdown">
+                                    <summary className="thinking-summary">
+                                      <span className="thinking-icon">▶</span>
+                                      <span className="thinking-label">Thinking trace ({thinkingSections.length})</span>
+                                    </summary>
+                                    <div className="thinking-content-wrapper">
+                                      {thinkingSections.map((section, idx) => (
+                                        <div key={section.id} className="thinking-section">
+                                          {thinkingSections.length > 1 && (
+                                            <div className="thinking-section-number">Trace {idx + 1}</div>
+                                          )}
+                                          <div className="thinking-content">
+                                            {section.content}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

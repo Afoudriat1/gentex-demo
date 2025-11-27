@@ -35,7 +35,10 @@ nohup "$LLAMA_BIN" \
     -m "$MODEL" \
     --host 0.0.0.0 \
     --port 8080 \
-    --no-think \
+    --ctx-size 32768 \
+    --reasoning-budget 0 \
+    --reasoning-format none \
+     --samplers no_thought \
     > llama.log 2>&1 &
 
 PID=$!

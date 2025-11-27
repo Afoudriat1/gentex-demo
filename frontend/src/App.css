@@ -452,6 +452,94 @@
   color: #4CAF50;
 }
 
+.status-indicator.warning {
+  color: #ff9800;
+}
+
+/* Main answer content - separate from thinking */
+.main-answer-content {
+  margin-bottom: 0.5rem;
+}
+
+/* Thinking dropdown - collapsed by default */
+.thinking-dropdown {
+  margin-top: 1rem;
+  border-top: 1px solid #333;
+  padding-top: 0.75rem;
+}
+
+.thinking-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  color: #888;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.thinking-summary:hover {
+  background: #1a1a1a;
+  color: #aaa;
+}
+
+.thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-dropdown[open] .thinking-summary .thinking-icon {
+  transform: rotate(90deg);
+}
+
+.thinking-icon {
+  font-size: 0.7rem;
+  color: #666;
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.thinking-label {
+  font-style: italic;
+  color: #888;
+}
+
+.thinking-content-wrapper {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.thinking-section {
+  background: #0a0a0a;
+  border: 1px solid #222;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.thinking-section-number {
+  font-size: 0.75rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.thinking-content {
+  color: #888;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-style: italic;
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 @media (max-width: 768px) {
   .title {
     font-size: 2rem;
