@@ -9,7 +9,7 @@ const fs = require("fs");
 const app = express();
 const PORT = process.env.PORT || 5001;
 const LLAMA_SERVER_URL =
-  process.env.LLAMA_SERVER_URL || "https://2d4ef1599a02.ngrok-free.app";
+  process.env.LLAMA_SERVER_URL || "http://localhost:8080";
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));

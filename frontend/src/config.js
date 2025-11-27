@@ -1,4 +1,4 @@
-const DEPLOYMENT = process.env.REACT_APP_DEPLOYMENT || 'vm';
+const DEPLOYMENT = process.env.REACT_APP_DEPLOYMENT || 'local';
 
 const API_BASE_URL = DEPLOYMENT === 'vm'
   ? (process.env.REACT_APP_API_URL || 'http://34.56.119.174:5001')

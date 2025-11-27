@@ -65,6 +65,14 @@ function App() {
     setHistory([]);
   };
 
+  const clearDocument = () => {
+    setPdfText('');
+    setSelectedFile(null);
+    setUploadStatus('');
+    localStorage.removeItem('pdfText');
+    console.log('Document cleared from state and localStorage');
+  };
+
   const handleFileChange = async (event) => {
     console.log('handleFileChange called!');
     console.log('Event:', event);
@@ -190,37 +198,54 @@ function App() {
     try {
       // Get current PDF text from state, fallback to localStorage
       let pdfTextToSend = pdfText || '';
+      let pdfTextSource = 'state';
       if (pdfTextToSend.length === 0) {
         const savedText = localStorage.getItem('pdfText');
         if (savedText && savedText.length > 0) {
-          console.log('Recovering PDF text from localStorage, length:', savedText.length);
+          console.log('⚠️ WARNING: PDF text recovered from localStorage (from previous session), length:', savedText.length);
           setPdfText(savedText);
           pdfTextToSend = savedText;
+          pdfTextSource = 'localStorage (previous session)';
         }
       }
 
       console.log('=== SENDING QUESTION ===');
       console.log('Question:', currentQuestion);
+      console.log('PDF text source:', pdfTextSource);
       console.log('PDF text from state length:', pdfText.length);
       console.log('PDF text from localStorage length:', localStorage.getItem('pdfText')?.length || 0);
       console.log('PDF text to send length:', pdfTextToSend.length);
-      console.log('PDF text preview (first 300 chars):', pdfTextToSend.substring(0, 300));
-      console.log('PDF text is empty?', pdfTextToSend.length === 0);
-
-      if (pdfTextToSend.length === 0) {
-        console.error('WARNING: PDF text is empty! Make sure you uploaded a PDF first.');
+      if (pdfTextToSend.length > 0) {
+        console.log('PDF text preview (first 300 chars):', pdfTextToSend.substring(0, 300));
+        console.warn('⚠️ PDF text will be sent with question (from ' + pdfTextSource + ')');
+      } else {
+        console.log('PDF text is empty - question will be sent without document context');
       }
       console.log('=== END SENDING QUESTION ===');
+
+      const requestBody = {
+        question: currentQuestion,
+        pdfText: pdfTextToSend
+      };
+
+      console.log('\n=== REQUEST TO BACKEND ===');
+      console.log('URL:', `${API_BASE_URL}/api/ask`);
+      console.log('Method: POST');
+      console.log('Headers:', {
+        'Content-Type': 'application/json',
+      });
+      console.log('Body:', JSON.stringify(requestBody, null, 2));
+      console.log('Body (parsed):', requestBody);
+      console.log('Question length:', currentQuestion.length);
+      console.log('PDF text length:', pdfTextToSend.length);
+      console.log('=== END REQUEST TO BACKEND ===\n');
 
       const response = await fetch(`${API_BASE_URL}/api/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          question: currentQuestion,
-          pdfText: pdfTextToSend
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -261,7 +286,19 @@ function App() {
 
         <div className="main-content">
           <div className="upload-section">
-            <h2 className="upload-title">Add Document</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h2 className="upload-title">Add Document</h2>
+              {pdfText && pdfText.length > 0 && (
+                <button
+                  onClick={clearDocument}
+                  className="clear-button"
+                  style={{ fontSize: '12px', padding: '5px 10px' }}
+                  title="Clear loaded document"
+                >
+                  Clear Document
+                </button>
+              )}
+            </div>
             <div className="upload-area">
               <input
                 type="file"
@@ -280,6 +317,14 @@ function App() {
               <div className="file-info">
                 <p className="file-name">{selectedFile.name}</p>
                 <p className="file-size">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            )}
+
+            {pdfText && pdfText.length > 0 && !selectedFile && (
+              <div className="file-info" style={{ backgroundColor: '#fff3cd', padding: '10px', borderRadius: '5px', marginTop: '10px' }}>
+                <p style={{ margin: 0, fontSize: '14px', color: '#856404' }}>
+                  ⚠️ Document loaded from previous session ({Math.round(pdfText.length / 1024)} KB)
+                </p>
               </div>
             )}
 
