@@ -1,0 +1,144 @@
+API REQUEST DOCUMENTATION
+==========================
+
+This file documents the exact requests being sent to test both servers.
+
+PORT 8080 - LLAMA SERVER (llama.cpp server)
+============================================
+
+1. Health Check:
+   curl -X GET http://localhost:8080/health
+   
+   Response: {"status":"ok"}
+
+2. Completion Request (Non-streaming):
+   curl -X POST http://localhost:8080/completion \
+     -H "Content-Type: application/json" \
+     -d '{"prompt":"Hello","n_predict":10,"temperature":0.1,"top_p":0.95,"stream":false}'
+   
+   Response: JSON with "content" field containing the generated text
+
+3. Completion Request (Streaming - what backend uses):
+   curl -X POST http://localhost:8080/completion \
+     -H "Content-Type: application/json" \
+     -H "ngrok-skip-browser-warning: true" \
+     --max-time 300 \
+     --connect-timeout 30 \
+     -d '{"prompt":"<|im_start|>system\n\nUse the following document...\n<|im_end|>\n<|im_start|>user\n\nQuestion here\n<|im_end|>\n<|im_start|>assistant\n","n_predict":128,"temperature":0.1,"top_p":0.95,"stream":true}' \
+     --no-buffer
+   
+   Response: Server-Sent Events (SSE) format:
+   data: {"index":0,"content":" text","tokens":[1234],"stop":false,"id_slot":-1,"tokens_predicted":1,"tokens_evaluated":23}
+   data: {"index":0,"content":" more","tokens":[5678],"stop":false,"id_slot":-1,"tokens_predicted":2,"tokens_evaluated":23}
+   data: {"index":0,"content":" text","tokens":[9012],"stop":true,"id_slot":-1,"tokens_predicted":3,"tokens_evaluated":23}
+   
+   The backend parses these SSE events, extracts the "content" field from each JSON object,
+   and streams just the content text to the frontend (not the full JSON).
+
+PORT 5001 - BACKEND SERVER (Express/Node.js)
+=============================================
+
+1. Health Check:
+   curl -X GET http://localhost:5001/api/health
+   
+   Response: {"ok":true}
+
+2. Ask Question (what frontend sends):
+   curl -X POST http://localhost:5001/api/ask \
+     -H "Content-Type: application/json" \
+     -d '{"question":"Test question","pdfText":""}'
+   
+   Response: Streaming text/plain response with tokens as they arrive
+
+BACKEND TO LLAMA SERVER REQUEST FORMAT
+=======================================
+
+The backend (port 5001) sends this to llama server (port 8080):
+
+Method: POST
+URL: http://localhost:8080/completion
+Headers:
+  Content-Type: application/json
+  ngrok-skip-browser-warning: true
+
+Body (JSON):
+{
+  "prompt": "<|im_start|>system\n\nUse the following document to answer the question provided. Assume no knowledge outside the document. Do NOT make inferences not supported by the document.\n<|im_end|>\n<|im_start|>user\n\n[If PDF text provided: <begin_document>\n\n[PDF text]\n\n<end_document>\n\nQuestion:\n[question]\nOtherwise: just [question]]\n<|im_end|>\n<|im_start|>assistant\n",
+  "n_predict": 128,
+  "temperature": 0.1,
+  "top_p": 0.95,
+  "stream": true
+}
+
+Curl arguments used:
+  -X POST
+  -H "Content-Type: application/json"
+  -H "ngrok-skip-browser-warning: true"
+  --max-time 300 (5 minute timeout)
+  --connect-timeout 30 (30 second connection timeout)
+  -d <JSON payload>
+  --no-buffer (for streaming)
+
+Response Processing:
+  The llama server returns SSE format: "data: {JSON}\n"
+  The backend's parseSSE() function:
+    1. Splits response by newlines
+    2. Finds lines starting with "data: "
+    3. Parses the JSON after "data: "
+    4. Extracts the "content" field
+    5. Streams only the content text to frontend (not full JSON)
+  
+  Example: If llama server sends:
+    data: {"index":0,"content":"Hello","tokens":[9707],"stop":false}
+  
+  The backend forwards to frontend: "Hello"
+
+FRONTEND TO BACKEND REQUEST FORMAT
+===================================
+
+The frontend sends this to backend (port 5001):
+
+Method: POST
+URL: http://localhost:5001/api/ask
+Headers:
+  Content-Type: application/json
+
+Body (JSON):
+{
+  "question": "User's question here",
+  "pdfText": "Extracted PDF text (or empty string)"
+}
+
+Response: Streaming text/plain with tokens as they arrive from llama server.
+
+TEST COMMANDS
+=============
+
+# Test llama server health
+curl -X GET http://localhost:8080/health
+
+# Test llama server completion (non-streaming)
+curl -X POST http://localhost:8080/completion \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Hello","n_predict":10,"temperature":0.1,"top_p":0.95,"stream":false}'
+
+# Test backend health
+curl -X GET http://localhost:5001/api/health
+
+# Test backend ask endpoint
+curl -X POST http://localhost:5001/api/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is 2+2?","pdfText":""}'
+
+# Test full flow (backend -> llama server streaming)
+curl -X POST http://localhost:5001/api/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Hello","pdfText":""}' \
+  --max-time 60
+
+NOTE: The backend now has:
+- 5 minute (300s) timeout for llama server responses
+- 30 second connection timeout
+- Frontend has 5 minute timeout for fetch requests
+- Keep-alive headers to prevent connection drops
+

@@ -239,6 +239,8 @@ function App() {
       console.log('Question length:', currentQuestion.length);
       console.log('PDF text length:', pdfTextToSend.length);
       console.log('=== END REQUEST TO BACKEND ===\n');
+      console.log('🔍 API_BASE_URL from config:', API_BASE_URL);
+      console.log('🔍 Full request URL will be:', `${API_BASE_URL}/api/ask`);
 
       const response = await fetch(`${API_BASE_URL}/api/ask`, {
         method: 'POST',
