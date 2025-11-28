@@ -12,6 +12,30 @@ AI-powered document analysis and Q&A system with real-time streaming responses.
 
 ## 🚀 How to Launch the Application
 
+> 📖 **For detailed setup instructions, see [SETUP.md](./SETUP.md)**
+
+### Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   cd backend && npm install
+   cd ../frontend && npm install
+   ```
+
+2. **Start backend (Terminal 1):**
+   ```bash
+   cd backend
+   node server.js
+   ```
+
+3. **Start frontend (Terminal 2):**
+   ```bash
+   cd frontend
+   npm start
+   ```
+
+4. **Access:** Open `http://localhost:3000` in your browser
+
 ### Prerequisites
 
 - **Node.js** (version 16 or higher) and **npm**
