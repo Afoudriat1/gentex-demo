@@ -1,23 +1,13 @@
 #!/bin/bash
 
 # Start llama-server with GGUF embedding model
-# Usage: ./start_embedding_server.sh /path/to/all-MiniLM-L6-v2.gguf
+# Uses embed.gguf model
 
 set -e
 
-MODEL="$1"
-PORT="${2:-8081}"  # Default port 8081 for embedding server
-
-if [ -z "$MODEL" ]; then
-    echo "Usage: $0 /path/to/embedding-model.gguf [port]"
-    echo ""
-    echo "Example:"
-    echo "  ./start_embedding_server.sh /opt/models/all-MiniLM-L6-v2.gguf"
-    echo ""
-    echo "Or download from HuggingFace:"
-    echo "  huggingface-cli download Mungert/all-MiniLM-L6-v2-GGUF --local-dir ./models/all-MiniLM-L6-v2"
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL="${SCRIPT_DIR}/embed.gguf"
+PORT="${1:-8081}"
 
 if [ ! -f "$MODEL" ]; then
     echo "❌ Model not found: $MODEL"
@@ -35,8 +25,7 @@ fi
 lsof -ti:$PORT 2>/dev/null | xargs kill -9 2>/dev/null || true
 sleep 1
 
-echo "🚀 Starting embedding server with $MODEL on port $PORT"
-echo "   Model: $(basename $MODEL)"
+echo "🚀 Starting embedding server with embed.gguf on port $PORT"
 
 nohup "$LLAMA_BIN" \
     -m "$MODEL" \

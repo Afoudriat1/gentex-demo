@@ -1,17 +1,12 @@
 #!/bin/bash
 
-# Simplest possible llama.cpp server launcher
-# Usage:
-#   ./run_llama_local.sh /path/to/model.gguf
+# llama.cpp server launcher
+# Uses compressed.gguf model
 
 set -e
 
-MODEL="$1"
-
-if [ -z "$MODEL" ]; then
-    echo "Usage: $0 /path/to/model.gguf"
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL="${SCRIPT_DIR}/compressed.gguf"
 
 if [ ! -f "$MODEL" ]; then
     echo "❌ Model not found: $MODEL"
@@ -29,7 +24,7 @@ fi
 pkill -f "llama-server" 2>/dev/null || true
 sleep 1
 
-echo "🚀 Starting llama-server with $MODEL"
+echo "🚀 Starting llama-server with compressed.gguf"
 
 nohup "$LLAMA_BIN" \
     -m "$MODEL" \
