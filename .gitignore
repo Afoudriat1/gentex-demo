@@ -30,5 +30,3 @@ backend/uploads/
 coverage/
 **/*.local
 
-# Large model files
-*.gguf
