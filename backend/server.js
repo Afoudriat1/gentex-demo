@@ -12,6 +12,7 @@ const LLAMA_SERVER_URL =
   process.env.LLAMA_SERVER_URL || "http://localhost:8080";
 
 const EMBEDDING_SERVER_URL = process.env.EMBEDDING_SERVER_URL || "http://localhost:8081";
+const MAX_PDF_PAGES = parseInt(process.env.MAX_PDF_PAGES || "50", 10);
 
 const documentStore = new Map();
 const promptCache = new Map();
@@ -353,10 +354,10 @@ app.post("/api/upload", upload.single("pdf"), async (req, res) => {
     const pdfDoc = await PDFDocument.load(pdfBuffer);
 
     const pages = pdfDoc.getPageCount();
-    if (pages > 10) {
+    if (pages > MAX_PDF_PAGES) {
       fs.unlinkSync(pdfPath);
       return res.status(400).json({
-        error: `PDF has ${pages} pages. Max allowed is 10.`,
+        error: `PDF has ${pages} pages. Max allowed is ${MAX_PDF_PAGES}.`,
       });
     }
 
@@ -506,6 +507,7 @@ app.post("/api/ask", async (req, res) => {
 
     let relevantText = "";
     let chunkIndices = [];
+    let ragChunks = []; // Store actual chunks for frontend display
 
     if (sessionId && documentStore.has(sessionId)) {
       const doc = documentStore.get(sessionId);
@@ -526,6 +528,11 @@ app.post("/api/ask", async (req, res) => {
           const sortedChunks = topChunks.sort((a, b) => a.index - b.index);
           relevantText = sortedChunks.map(c => c.chunk).join("\n\n---\n\n");
           chunkIndices = sortedChunks.map(c => c.index);
+          ragChunks = sortedChunks.map(c => ({
+            index: c.index,
+            text: c.chunk,
+            similarity: c.similarity
+          }));
 
           console.log(`✅ RAG: Selected ${topChunks.length} chunks in ${retrievalElapsed}s`);
           console.log(`   Similarities: ${topChunks.map(c => c.similarity.toFixed(3)).join(', ')}`);
@@ -535,6 +542,11 @@ app.post("/api/ask", async (req, res) => {
           if (fallbackChunks.length > 0) {
             relevantText = fallbackChunks.map(c => c.chunk).join("\n\n---\n\n");
             chunkIndices = fallbackChunks.map(c => c.index);
+            ragChunks = fallbackChunks.map(c => ({
+              index: c.index,
+              text: c.chunk,
+              similarity: c.similarity
+            }));
             console.log(`RAG: Using ${fallbackChunks.length} chunks (lower threshold)`);
           } else {
             const maxFallbackLength = 4000;
@@ -572,6 +584,24 @@ app.post("/api/ask", async (req, res) => {
       "Transfer-Encoding": "chunked",
       "Access-Control-Allow-Origin": "*",
     });
+
+    // Send RAG chunk metadata as first message (if available)
+    if (ragChunks.length > 0 || relevantText) {
+      const metadata = JSON.stringify({
+        type: "rag_metadata",
+        chunks: ragChunks,
+        query: question,
+        formattedContext: relevantText || ""
+      });
+      try {
+        console.log(`📤 Sending RAG metadata with ${ragChunks.length} chunks`);
+        res.write(`data: ${metadata}\n\n`);
+      } catch (e) {
+        console.error("Error writing RAG metadata:", e);
+      }
+    } else {
+      console.log("⚠️ No RAG chunks to send (ragChunks.length =", ragChunks.length, ")");
+    }
 
     // Initialize state variables
     let hasWrittenData = false;

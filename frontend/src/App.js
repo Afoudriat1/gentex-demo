@@ -254,7 +254,10 @@ function App() {
       question: currentQuestion,
       answer: '',
       timestamp: new Date().toLocaleString(),
-      isStreaming: true
+      isStreaming: true,
+      ragChunks: [], // Store RAG chunks for display
+      ragQuery: '', // Store the query
+      ragFormattedContext: '' // Store the formatted context
     };
     setHistory((prev) => [newItem, ...prev]);
     setQuestion('');
@@ -338,8 +341,15 @@ function App() {
       let streamingAnswer = '';
       let hasReceivedData = false;
       let lastDataTime = Date.now();
+      let ragChunks = []; // Store RAG chunks from metadata
+      let ragQuery = ''; // Store the query
+      let ragFormattedContext = ''; // Store the formatted context
+      let sseBuffer = ''; // Buffer for SSE messages
+      let metadataReceived = false; // Track if we've received metadata
       const STREAM_TIMEOUT = 300000; // 5 minutes max timeout
       const DATA_TIMEOUT = 60000; // 1 minute without data = connection issue
+
+      console.log('🔍 Starting to read response stream...');
 
       // Set up timeout to detect if streaming stops
       const streamTimeout = setTimeout(() => {
@@ -377,8 +387,59 @@ function App() {
             clearTimeout(dataTimeout);
             // Flush any remaining buffered data
             const remaining = decoder.decode();
-            if (remaining) {
-              streamingAnswer += remaining;
+            if (remaining || sseBuffer) {
+              let finalBuffer = sseBuffer + (remaining || '');
+              // Try to parse any remaining SSE messages
+              let messageEnd;
+              while ((messageEnd = finalBuffer.indexOf('\n\n')) !== -1) {
+                const message = finalBuffer.substring(0, messageEnd + 2);
+                finalBuffer = finalBuffer.substring(messageEnd + 2);
+
+                if (message.startsWith('data: ')) {
+                  try {
+                    const jsonStr = message.substring(6).trim();
+                    if (jsonStr === '[DONE]' || !jsonStr) {
+                      continue;
+                    }
+                    const data = JSON.parse(jsonStr);
+                    if (data.type === 'rag_metadata') {
+                      console.log('📦 Received RAG metadata (final)');
+                      if (data.chunks) {
+                        ragChunks = data.chunks;
+                      }
+                      if (data.query) {
+                        ragQuery = data.query;
+                      }
+                      if (data.formattedContext) {
+                        ragFormattedContext = data.formattedContext;
+                      }
+                      updateHistoryItem(newItem.id, {
+                        ragChunks: ragChunks,
+                        ragQuery: ragQuery,
+                        ragFormattedContext: ragFormattedContext
+                      });
+                      continue;
+                    }
+                    // Handle regular SSE content
+                    if (data.content !== undefined && data.content !== null) {
+                      const content = String(data.content);
+                      if (content.length > 0) {
+                        streamingAnswer += content;
+                      }
+                    }
+                  } catch (e) {
+                    if (message.length > 6) {
+                      streamingAnswer += message;
+                    }
+                  }
+                } else if (message.trim()) {
+                  streamingAnswer += message;
+                }
+              }
+              // Add any remaining data
+              if (finalBuffer && !finalBuffer.startsWith('data: ')) {
+                streamingAnswer += finalBuffer;
+              }
               updateHistoryItem(newItem.id, { answer: streamingAnswer });
             }
             break;
@@ -390,7 +451,77 @@ function App() {
             resetDataTimeout(); // Reset timeout on data received
 
             const decoded = decoder.decode(value, { stream: true });
-            streamingAnswer += decoded;
+            sseBuffer += decoded;
+
+            // First, try to extract any SSE metadata messages
+            // The backend sends metadata first in SSE format: "data: {...}\n\n"
+            let messageEnd;
+            while ((messageEnd = sseBuffer.indexOf('\n\n')) !== -1) {
+              const message = sseBuffer.substring(0, messageEnd + 2);
+              sseBuffer = sseBuffer.substring(messageEnd + 2);
+
+              // Check if it's an SSE data message
+              if (message.startsWith('data: ')) {
+                try {
+                  const jsonStr = message.substring(6).trim();
+                  // Skip [DONE] markers and empty data
+                  if (jsonStr === '[DONE]' || !jsonStr) {
+                    continue;
+                  }
+                  const data = JSON.parse(jsonStr);
+                  // Check for our RAG metadata
+                  if (data.type === 'rag_metadata') {
+                    console.log('📦 Received RAG metadata');
+                    if (data.chunks) {
+                      console.log('📦 Chunks:', data.chunks.length);
+                      console.log('📦 Chunk data:', data.chunks.map(c => ({ index: c.index, textLength: c.text?.length, similarity: c.similarity })));
+                      ragChunks = data.chunks;
+                    }
+                    if (data.query) {
+                      ragQuery = data.query;
+                    }
+                    if (data.formattedContext) {
+                      ragFormattedContext = data.formattedContext;
+                    }
+                    metadataReceived = true;
+                    updateHistoryItem(newItem.id, {
+                      ragChunks: ragChunks,
+                      ragQuery: ragQuery,
+                      ragFormattedContext: ragFormattedContext
+                    });
+                    continue; // Skip adding this to the answer
+                  }
+                  // Handle regular SSE content from llama-server (if any)
+                  if (data.content !== undefined && data.content !== null) {
+                    const content = String(data.content);
+                    if (content.length > 0) {
+                      streamingAnswer += content;
+                    }
+                  }
+                } catch (e) {
+                  // Not valid JSON - this shouldn't happen, but if it does, skip it
+                  console.warn('Failed to parse SSE message:', e.message);
+                }
+              } else if (message.trim()) {
+                // Not an SSE data message, this is plain text content
+                streamingAnswer += message;
+              }
+            }
+
+            // After processing complete SSE messages, handle remaining buffer
+            // If it starts with "data: " but isn't complete, keep it for next iteration
+            // Otherwise, it's plain text content - add it to the answer
+            if (sseBuffer) {
+              if (sseBuffer.startsWith('data: ') && !sseBuffer.includes('\n\n')) {
+                // Incomplete SSE message, keep in buffer for next iteration
+                // Do nothing
+              } else if (!sseBuffer.startsWith('data: ')) {
+                // Plain text content, add to answer
+                streamingAnswer += sseBuffer;
+                sseBuffer = '';
+              }
+            }
+
             updateHistoryItem(newItem.id, { answer: streamingAnswer });
           }
         }
@@ -400,6 +531,9 @@ function App() {
         }
 
         updateHistoryItem(newItem.id, { isStreaming: false });
+        if (!metadataReceived && ragChunks.length === 0) {
+          console.log('⚠️ No RAG metadata received in stream');
+        }
       } catch (streamError) {
         clearTimeout(streamTimeout);
         clearTimeout(dataTimeout);
@@ -575,6 +709,50 @@ function App() {
                                     </div>
                                   </details>
                                 )}
+                                {(item.ragChunks && item.ragChunks.length > 0) || item.ragFormattedContext ? (
+                                  <details className="rag-chunks-dropdown">
+                                    <summary className="rag-chunks-summary">
+                                      <span className="rag-chunks-icon">▶</span>
+                                      <span className="rag-chunks-label">
+                                        🔍 RAG Context {item.ragChunks && item.ragChunks.length > 0 ? `(${item.ragChunks.length} chunk${item.ragChunks.length > 1 ? 's' : ''})` : ''}
+                                      </span>
+                                    </summary>
+                                    <div className="rag-chunks-panel">
+                                      {item.ragQuery && (
+                                        <>
+                                          <div className="rag-chunks-section-title">Query:</div>
+                                          <div className="rag-chunks-section-text">{item.ragQuery}</div>
+                                        </>
+                                      )}
+
+                                      {item.ragChunks && item.ragChunks.length > 0 && (
+                                        <>
+                                          <div className="rag-chunks-section-title">Retrieved Chunks:</div>
+                                          {item.ragChunks.map((chunk, idx) => (
+                                            <div key={idx} className="rag-chunk-item">
+                                              <div className="rag-chunk-header">
+                                                Chunk {idx + 1}
+                                                {chunk.similarity !== undefined && (
+                                                  <> | Similarity: {(chunk.similarity * 100).toFixed(1)}%</>
+                                                )}
+                                              </div>
+                                              <div className="rag-chunk-content">
+                                                {chunk.text}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </>
+                                      )}
+
+                                      {item.ragFormattedContext && (
+                                        <>
+                                          <div className="rag-chunks-section-title">Formatted Context (sent to LLM):</div>
+                                          <div className="rag-chunks-section-text">{item.ragFormattedContext}</div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </details>
+                                ) : null}
                               </>
                             );
                           })()}
